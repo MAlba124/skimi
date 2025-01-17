@@ -2,7 +2,7 @@
 //  - https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs
 // Goal: less than 1000 LOC
 
-use std::{io::Write, iter::Peekable, str::Chars};
+use std::{collections::HashMap, io::Write, iter::Peekable, str::Chars};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Tok {
@@ -228,11 +228,43 @@ fn fmt_expr(e: Expr) -> String {
 }
 
 struct Evaluator {
+    variable_stack: Vec<HashMap<String, Expr>>,
 }
 
 impl Evaluator {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            variable_stack: vec!(HashMap::new()),
+        }
+    }
+
+    #[inline]
+    fn push_to_current_scope(&mut self, ident: String, val: Expr) {
+        match self.variable_stack.last_mut() {
+            Some(last) => last.entry(ident).and_modify(|v| *v = val.clone()).or_insert(val),
+            None => panic!("Missing scope on the variable stack"),
+        };
+    }
+
+    #[inline]
+    fn display(&self, args: &[Expr]) {
+        for (i, expr) in args.iter().enumerate() {
+            print!(
+                "{}{}",
+                fmt_expr(expr.clone()),
+                if i < args.len() - 1 { " " } else { "" }
+            );
+        }
+        println!();
+    }
+
+    #[inline]
+    fn reduce(&mut self, exprs: Vec<Expr>) -> Option<Vec<Expr>> {
+        let mut reduced = Vec::new();
+        for e in exprs {
+            reduced.push(self.eval(e)?);
+        }
+        Some(reduced)
     }
 
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
@@ -245,10 +277,7 @@ impl Evaluator {
                 Some(Expr::Constant(match reduced_head {
                     Expr::Constant(Atom::BuiltIn(bi)) => match bi {
                         BuiltIn::Minus => {
-                            let mut reduced_tail = Vec::new();
-                            for e in tail {
-                                reduced_tail.push(self.eval(e)?);
-                            }
+                            let reduced_tail = self.reduce(tail)?;
                             Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
                                 let fe = get_num_from_expr(first_elem)?;
                                 reduced_tail
@@ -263,12 +292,8 @@ impl Evaluator {
                             })
                         }
                         BuiltIn::Plus => {
-                            let mut reduced_tail = Vec::new();
-                            for e in tail {
-                                reduced_tail.push(self.eval(e)?);
-                            }
                             Atom::Num(
-                                reduced_tail
+                                self.reduce(tail)?
                                     .into_iter()
                                     .map(get_num_from_expr)
                                     .collect::<Option<Vec<i64>>>()?
@@ -277,10 +302,7 @@ impl Evaluator {
                             )
                         }
                         BuiltIn::Slash => {
-                            let mut reduced_tail = Vec::new();
-                            for e in tail {
-                                reduced_tail.push(self.eval(e)?);
-                            }
+                            let reduced_tail = self.reduce(tail)?;
                             Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
                                 let fe = get_num_from_expr(first_elem)?;
                                 reduced_tail
@@ -295,10 +317,7 @@ impl Evaluator {
                             })
                         }
                         BuiltIn::Times => {
-                            let mut reduced_tail = Vec::new();
-                            for e in tail {
-                                reduced_tail.push(self.eval(e)?);
-                            }
+                            let reduced_tail = self.reduce(tail)?;
                             Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
                                 let fe = get_num_from_expr(first_elem)?;
                                 reduced_tail
@@ -313,18 +332,8 @@ impl Evaluator {
                             })
                         }
                         BuiltIn::Display => {
-                            let mut reduced_tail = Vec::new();
-                            for e in tail {
-                                reduced_tail.push(self.eval(e)?);
-                            }
-                            for (i, expr) in reduced_tail.iter().enumerate() {
-                                print!(
-                                    "{}{}",
-                                    fmt_expr(expr.clone()),
-                                    if i < reduced_tail.len() - 1 { " " } else { "" }
-                                );
-                            }
-                            println!();
+                            let reduced_tail = self.reduce(tail)?;
+                            self.display(&reduced_tail);
                             return None;
                         }
                         BuiltIn::If => {
@@ -340,10 +349,7 @@ impl Evaluator {
                             }
                         }
                         BuiltIn::Eq => {
-                            let mut reduced_tail = Vec::new();
-                            for e in tail {
-                                reduced_tail.push(self.eval(e)?);
-                            }
+                            let reduced_tail = self.reduce(tail)?;
                             Atom::Bool(
                                 reduced_tail
                                     .iter()
@@ -355,7 +361,8 @@ impl Evaluator {
                             assert_eq!(tail.len(), 2);
                             let ident = get_ident_string(tail[0].clone()).unwrap();
                             let reduced_body = self.eval(tail[1].clone()).unwrap();
-                            todo!();
+                            self.push_to_current_scope(ident, reduced_body);
+                            return None;
                         }
                     },
                     Expr::Ident(_) => todo!(),
