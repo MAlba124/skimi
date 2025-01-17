@@ -15,6 +15,7 @@ enum Tok {
     Slash,
     Times,
     Bool(bool),
+    Eq,
 }
 
 fn is_digit(ch: Option<&char>) -> bool {
@@ -68,6 +69,7 @@ fn lex(s: &str) -> Vec<Tok> {
             '+' => Tok::Plus,
             '/' => Tok::Slash,
             '*' => Tok::Times,
+            '=' => Tok::Eq,
             '#' => {
                 let next = iter.next().unwrap();
                 if next == 'f' {
@@ -92,7 +94,7 @@ fn lex(s: &str) -> Vec<Tok> {
     toks
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum BuiltIn {
     Minus,
     Plus,
@@ -100,20 +102,23 @@ enum BuiltIn {
     Slash,
     Times,
     If,
+    Eq,
+    Define,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Atom {
     Num(i64),
     BuiltIn(BuiltIn),
     Bool(bool),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Expr {
     Constant(Atom),
     Ident(String),
-    Application(Box<Expr>, Vec<Expr>),
+    List(Vec<Expr>),
+    // Application(Box<Expr>, Vec<Expr>),
 }
 
 struct Parser {
@@ -140,24 +145,29 @@ impl Parser {
                     subs.push(self.parse());
                 }
                 self.pos += 1;
-                Expr::Application(
-                    Box::new(subs.first().unwrap().clone()?),
-                    subs.iter()
-                        .skip(1)
-                        .cloned()
-                        .collect::<Option<Vec<Expr>>>()?,
-                )
+                Expr::List(subs.into_iter().collect::<Option<Vec<Expr>>>()?)
             }
             Tok::CPar => return None,
             Tok::Ident(i) => match i.as_str() {
                 "display" => Expr::Constant(Atom::BuiltIn(BuiltIn::Display)),
                 "if" => {
-                    let mut subs = vec![self.parse()?, self.parse()?];
+                    let mut subs = vec![
+                        Expr::Constant(Atom::BuiltIn(BuiltIn::If)),
+                        self.parse()?,
+                        self.parse()?,
+                    ];
                     if let Some(false_branch) = self.parse() {
                         subs.push(false_branch);
                     }
 
-                    Expr::Application(Box::new(Expr::Constant(Atom::BuiltIn(BuiltIn::If))), subs)
+                    Expr::List(subs)
+                }
+                "define" => {
+                    Expr::List(vec![
+                        Expr::Constant(Atom::BuiltIn(BuiltIn::Define)),
+                        self.parse()?,
+                        self.parse()?,
+                    ])
                 }
                 _ => Expr::Ident(i.clone()),
             },
@@ -167,6 +177,7 @@ impl Parser {
             Tok::Slash => Expr::Constant(Atom::BuiltIn(BuiltIn::Slash)),
             Tok::Times => Expr::Constant(Atom::BuiltIn(BuiltIn::Times)),
             Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
+            Tok::Eq => Expr::Constant(Atom::BuiltIn(BuiltIn::Eq)),
         })
     }
 }
@@ -187,6 +198,14 @@ fn get_bool_from_expr(e: Expr) -> Option<bool> {
     }
 }
 
+fn get_ident_string(e: Expr) -> Option<String> {
+    if let Expr::Ident(i) = e {
+        Some(i)
+    } else {
+        None
+    }
+}
+
 fn fmt_expr(e: Expr) -> String {
     match e {
         Expr::Constant(c) => match c {
@@ -198,25 +217,38 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::Times => String::from("built_in<Times>"),
                 BuiltIn::Display => String::from("built_in<Display>"),
                 BuiltIn::If => String::from("non_printable<If>"),
+                BuiltIn::Eq => String::from("built_in<Eq>"),
+                BuiltIn::Define => String::from("built_in<Define>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
         },
         Expr::Ident(i) => format!("identifier<{i}>"),
-        Expr::Application(_, _) => String::from("non_printable<Application>"),
+        Expr::List(_) => String::from("non_printable<List>"), // TODO
     }
 }
 
-fn eval(expr: Expr) -> Option<Expr> {
-    match expr {
-        Expr::Constant(_) | Expr::Ident(_) => Some(expr),
-        Expr::Application(head, tail) => {
-            let reduced_head = eval(*head)?;
-            match reduced_head {
-                Expr::Constant(Atom::BuiltIn(bi)) => {
-                    Some(Expr::Constant(match bi {
+struct Evaluator {
+}
+
+impl Evaluator {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    fn eval(&mut self, expr: Expr) -> Option<Expr> {
+        match expr {
+            Expr::Constant(_) | Expr::Ident(_) => Some(expr),
+            Expr::List(l) => {
+                let reduced_head = self.eval(l.first()?.clone())?;
+                let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
+
+                Some(Expr::Constant(match reduced_head {
+                    Expr::Constant(Atom::BuiltIn(bi)) => match bi {
                         BuiltIn::Minus => {
-                            let reduced_tail =
-                                tail.into_iter().map(eval).collect::<Option<Vec<Expr>>>()?;
+                            let mut reduced_tail = Vec::new();
+                            for e in tail {
+                                reduced_tail.push(self.eval(e)?);
+                            }
                             Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
                                 let fe = get_num_from_expr(first_elem)?;
                                 reduced_tail
@@ -231,8 +263,10 @@ fn eval(expr: Expr) -> Option<Expr> {
                             })
                         }
                         BuiltIn::Plus => {
-                            let reduced_tail =
-                                tail.into_iter().map(eval).collect::<Option<Vec<Expr>>>()?;
+                            let mut reduced_tail = Vec::new();
+                            for e in tail {
+                                reduced_tail.push(self.eval(e)?);
+                            }
                             Atom::Num(
                                 reduced_tail
                                     .into_iter()
@@ -243,8 +277,10 @@ fn eval(expr: Expr) -> Option<Expr> {
                             )
                         }
                         BuiltIn::Slash => {
-                            let reduced_tail =
-                                tail.into_iter().map(eval).collect::<Option<Vec<Expr>>>()?;
+                            let mut reduced_tail = Vec::new();
+                            for e in tail {
+                                reduced_tail.push(self.eval(e)?);
+                            }
                             Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
                                 let fe = get_num_from_expr(first_elem)?;
                                 reduced_tail
@@ -259,8 +295,10 @@ fn eval(expr: Expr) -> Option<Expr> {
                             })
                         }
                         BuiltIn::Times => {
-                            let reduced_tail =
-                                tail.into_iter().map(eval).collect::<Option<Vec<Expr>>>()?;
+                            let mut reduced_tail = Vec::new();
+                            for e in tail {
+                                reduced_tail.push(self.eval(e)?);
+                            }
                             Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
                                 let fe = get_num_from_expr(first_elem)?;
                                 reduced_tail
@@ -275,8 +313,10 @@ fn eval(expr: Expr) -> Option<Expr> {
                             })
                         }
                         BuiltIn::Display => {
-                            let reduced_tail =
-                                tail.into_iter().map(eval).collect::<Option<Vec<Expr>>>()?;
+                            let mut reduced_tail = Vec::new();
+                            for e in tail {
+                                reduced_tail.push(self.eval(e)?);
+                            }
                             for (i, expr) in reduced_tail.iter().enumerate() {
                                 print!(
                                     "{}{}",
@@ -290,19 +330,38 @@ fn eval(expr: Expr) -> Option<Expr> {
                         BuiltIn::If => {
                             let cond = &tail[0];
                             let true_branch = &tail[1];
-                            let reduced_cond = eval(cond.clone());
+                            let reduced_cond = self.eval(cond.clone());
                             if get_bool_from_expr(reduced_cond.unwrap()).unwrap() {
-                                return eval(true_branch.clone());
+                                return self.eval(true_branch.clone());
                             } else if tail.len() > 2 {
-                                return eval(tail[2].clone());
+                                return self.eval(tail[2].clone());
                             } else {
                                 return None;
                             }
                         }
-                    }))
-                }
-                // Expr::Ident(_) => todo!(),
-                _ => unreachable!(),
+                        BuiltIn::Eq => {
+                            let mut reduced_tail = Vec::new();
+                            for e in tail {
+                                reduced_tail.push(self.eval(e)?);
+                            }
+                            Atom::Bool(
+                                reduced_tail
+                                    .iter()
+                                    .zip(reduced_tail.iter().skip(1))
+                                    .all(|(a, b)| a == b),
+                            )
+                        }
+                        BuiltIn::Define => {
+                            assert_eq!(tail.len(), 2);
+                            let ident = get_ident_string(tail[0].clone()).unwrap();
+                            let reduced_body = self.eval(tail[1].clone()).unwrap();
+                            todo!();
+                        }
+                    },
+                    Expr::Ident(_) => todo!(),
+                    Expr::List(_) => todo!(),
+                    _ => todo!(),
+                }))
             }
         }
     }
@@ -319,9 +378,10 @@ fn repl() {
         let toks = lex(&buffer);
         // println!("{:?}", toks);
         let mut parser = Parser::new(toks);
+        let mut e = Evaluator::new();
         while let Some(expr) = parser.parse() {
             // println!("{expr:?}");
-            println!("{:?}", eval(expr));
+            println!("{:?}", e.eval(expr));
         }
     }
 }
