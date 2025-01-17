@@ -247,24 +247,83 @@ impl Evaluator {
     }
 
     #[inline]
-    fn display(&self, args: &[Expr]) {
-        for (i, expr) in args.iter().enumerate() {
-            print!(
-                "{}{}",
-                fmt_expr(expr.clone()),
-                if i < args.len() - 1 { " " } else { "" }
-            );
-        }
-        println!();
-    }
-
-    #[inline]
     fn reduce(&mut self, exprs: Vec<Expr>) -> Option<Vec<Expr>> {
         let mut reduced = Vec::new();
         for e in exprs {
             reduced.push(self.eval(e)?);
         }
         Some(reduced)
+    }
+
+    #[inline]
+    fn display(&mut self, args: Vec<Expr>) {
+        let len = args.len();
+        for (i, expr) in self.reduce(args).unwrap().iter().enumerate() {
+            print!(
+                "{}{}",
+                fmt_expr(expr.clone()),
+                if i < len - 1 { " " } else { "" }
+            );
+        }
+        println!();
+    }
+
+    #[inline]
+    fn minus(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        let reduced_args = self.reduce(args)?;
+        Some(Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
+            let fe = get_num_from_expr(first_elem)?;
+            reduced_args
+                .into_iter()
+                .map(get_num_from_expr)
+                .collect::<Option<Vec<i64>>>()?
+                .into_iter()
+                .skip(1)
+                .fold(fe, |a, b| a - b)
+        } else {
+            Default::default()
+        }))
+    }
+
+    #[inline]
+    fn plus(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        Some(Atom::Num(
+            self.reduce(args)?
+                .into_iter()
+                .map(get_num_from_expr)
+                .collect::<Option<Vec<i64>>>()?
+                .into_iter()
+                .sum(),
+        ))
+    }
+
+    #[inline]
+    fn slash(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        let reduced_args = self.reduce(args)?;
+        Some(Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
+            let fe = get_num_from_expr(first_elem)?;
+            reduced_args
+                .into_iter()
+                .map(get_num_from_expr)
+                .collect::<Option<Vec<i64>>>()?
+                .into_iter()
+                .skip(1)
+                .fold(fe, |a, b| a / b)
+        } else {
+            Default::default()
+        }))
+    }
+
+    #[inline]
+    fn times(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        Some(Atom::Num(
+            self.reduce(args)?
+                .into_iter()
+                .map(get_num_from_expr)
+                .collect::<Option<Vec<i64>>>()?
+                .into_iter()
+                .product(),
+        ))
     }
 
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
@@ -276,64 +335,12 @@ impl Evaluator {
 
                 Some(Expr::Constant(match reduced_head {
                     Expr::Constant(Atom::BuiltIn(bi)) => match bi {
-                        BuiltIn::Minus => {
-                            let reduced_tail = self.reduce(tail)?;
-                            Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
-                                let fe = get_num_from_expr(first_elem)?;
-                                reduced_tail
-                                    .into_iter()
-                                    .map(get_num_from_expr)
-                                    .collect::<Option<Vec<i64>>>()?
-                                    .into_iter()
-                                    .skip(1)
-                                    .fold(fe, |a, b| a - b)
-                            } else {
-                                Default::default()
-                            })
-                        }
-                        BuiltIn::Plus => {
-                            Atom::Num(
-                                self.reduce(tail)?
-                                    .into_iter()
-                                    .map(get_num_from_expr)
-                                    .collect::<Option<Vec<i64>>>()?
-                                    .into_iter()
-                                    .sum(),
-                            )
-                        }
-                        BuiltIn::Slash => {
-                            let reduced_tail = self.reduce(tail)?;
-                            Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
-                                let fe = get_num_from_expr(first_elem)?;
-                                reduced_tail
-                                    .into_iter()
-                                    .map(get_num_from_expr)
-                                    .collect::<Option<Vec<i64>>>()?
-                                    .into_iter()
-                                    .skip(1)
-                                    .fold(fe, |a, b| a / b)
-                            } else {
-                                Default::default()
-                            })
-                        }
-                        BuiltIn::Times => {
-                            let reduced_tail = self.reduce(tail)?;
-                            Atom::Num(if let Some(first_elem) = reduced_tail.first().cloned() {
-                                let fe = get_num_from_expr(first_elem)?;
-                                reduced_tail
-                                    .into_iter()
-                                    .map(get_num_from_expr)
-                                    .collect::<Option<Vec<i64>>>()?
-                                    .into_iter()
-                                    .skip(1)
-                                    .fold(fe, |a, b| a * b)
-                            } else {
-                                Default::default()
-                            })
-                        }
+                        BuiltIn::Minus => self.minus(tail)?,
+                        BuiltIn::Plus => self.plus(tail)?,
+                        BuiltIn::Slash => self.slash(tail)?,
+                        BuiltIn::Times => self.times(tail)?,
                         BuiltIn::Display => {
-                            let reduced_tail = self.reduce(tail)?;
-                            self.display(&reduced_tail);
+                            self.display(tail);
                             return None;
                         }
                         BuiltIn::If => {
