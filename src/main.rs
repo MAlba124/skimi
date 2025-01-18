@@ -1,7 +1,3 @@
-// References:
-//  - https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs
-// Goal: less than 1000 LOC
-
 use std::{collections::HashMap, io::Write, iter::Peekable, str::Chars};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
