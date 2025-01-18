@@ -162,13 +162,11 @@ impl Parser {
 
                     Expr::List(subs)
                 }
-                "define" => {
-                    Expr::List(vec![
-                        Expr::Constant(Atom::BuiltIn(BuiltIn::Define)),
-                        self.parse()?,
-                        self.parse()?,
-                    ])
-                }
+                "define" => Expr::List(vec![
+                    Expr::Constant(Atom::BuiltIn(BuiltIn::Define)),
+                    self.parse()?,
+                    self.parse()?,
+                ]),
                 "list" => {
                     let mut inner_list = Vec::new();
                     while let Some(e) = self.parse() {
@@ -176,7 +174,8 @@ impl Parser {
                     }
                     Expr::List(vec![
                         Expr::Constant(Atom::BuiltIn(BuiltIn::List)),
-                        Expr::List(inner_list),])
+                        Expr::List(inner_list),
+                    ])
                 }
                 "lambda" => {
                     todo!()
@@ -233,14 +232,17 @@ struct Evaluator {
 impl Evaluator {
     pub fn new() -> Self {
         Self {
-            variable_stack: vec!(HashMap::new()),
+            variable_stack: vec![HashMap::new()],
         }
     }
 
     #[inline]
     fn push_to_current_scope(&mut self, ident: String, val: Expr) {
         match self.variable_stack.last_mut() {
-            Some(last) => last.entry(ident).and_modify(|v| *v = val.clone()).or_insert(val),
+            Some(last) => last
+                .entry(ident)
+                .and_modify(|v| *v = val.clone())
+                .or_insert(val),
             None => panic!("Missing scope on the variable stack"),
         };
     }
@@ -307,18 +309,20 @@ impl Evaluator {
     #[inline]
     fn minus(&mut self, args: Vec<Expr>) -> Option<Atom> {
         let reduced_args = self.reduce(args)?;
-        Some(Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
-            let fe = self.get_num_from_expr(first_elem)?;
-            reduced_args
-                .into_iter()
-                .map(|e| self.get_num_from_expr(e))
-                .collect::<Option<Vec<i64>>>()?
-                .into_iter()
-                .skip(1)
-                .fold(fe, |a, b| a - b)
-        } else {
-            Default::default()
-        }))
+        Some(Atom::Num(
+            if let Some(first_elem) = reduced_args.first().cloned() {
+                let fe = self.get_num_from_expr(first_elem)?;
+                reduced_args
+                    .into_iter()
+                    .map(|e| self.get_num_from_expr(e))
+                    .collect::<Option<Vec<i64>>>()?
+                    .into_iter()
+                    .skip(1)
+                    .fold(fe, |a, b| a - b)
+            } else {
+                Default::default()
+            },
+        ))
     }
 
     #[inline]
@@ -336,18 +340,20 @@ impl Evaluator {
     #[inline]
     fn slash(&mut self, args: Vec<Expr>) -> Option<Atom> {
         let reduced_args = self.reduce(args)?;
-        Some(Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
-            let fe = self.get_num_from_expr(first_elem)?;
-            reduced_args
-                .into_iter()
-                .map(|e| self.get_num_from_expr(e))
-                .collect::<Option<Vec<i64>>>()?
-                .into_iter()
-                .skip(1)
-                .fold(fe, |a, b| a / b)
-        } else {
-            Default::default()
-        }))
+        Some(Atom::Num(
+            if let Some(first_elem) = reduced_args.first().cloned() {
+                let fe = self.get_num_from_expr(first_elem)?;
+                reduced_args
+                    .into_iter()
+                    .map(|e| self.get_num_from_expr(e))
+                    .collect::<Option<Vec<i64>>>()?
+                    .into_iter()
+                    .skip(1)
+                    .fold(fe, |a, b| a / b)
+            } else {
+                Default::default()
+            },
+        ))
     }
 
     #[inline]
@@ -412,8 +418,6 @@ impl Evaluator {
                 let reduced_head = self.eval(l.first()?.clone())?;
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
 
-                println!("#########\n{:?}", reduced_head);
-                println!("{:?}", tail);
                 Some(Expr::Constant(match reduced_head {
                     Expr::Constant(Atom::BuiltIn(bi)) => match bi {
                         BuiltIn::Minus => self.minus(tail)?,
