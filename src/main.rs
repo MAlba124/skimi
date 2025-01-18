@@ -119,6 +119,7 @@ enum Expr {
     Constant(Atom),
     Ident(String),
     List(Vec<Expr>),
+    Lambda(Vec<String>, Vec<Expr>),
 }
 
 struct Parser {
@@ -178,7 +179,21 @@ impl Parser {
                     ])
                 }
                 "lambda" => {
-                    todo!()
+                    let arglist = self.parse().unwrap();
+                    let mut arglist_idents: Vec<String> = Vec::new();
+                    match arglist {
+                        Expr::List(arglist) => {
+                            for arg in arglist.into_iter() {
+                                match arg {
+                                    Expr::Ident(i) => arglist_idents.push(i),
+                                    _ => panic!("TODO"),
+                                }
+                            }
+                        }
+                        _ => panic!("TODO"),
+                    }
+                    let body = self.parse().unwrap();
+                    Expr::Lambda(arglist_idents, vec![body])
                 }
                 _ => Expr::Ident(i.clone()),
             },
@@ -222,6 +237,7 @@ fn fmt_expr(e: Expr) -> String {
             }
             res
         }
+        Expr::Lambda(_, _) => String::from("non_printable<Lambda>"),
     }
 }
 
@@ -245,6 +261,16 @@ impl Evaluator {
                 .or_insert(val),
             None => panic!("Missing scope on the variable stack"),
         };
+    }
+
+    #[inline]
+    fn push_new_scope(&mut self) {
+        self.variable_stack.push(HashMap::new());
+    }
+
+    #[inline]
+    fn pop_scope(&mut self) {
+        let _ = self.variable_stack.pop().unwrap();
     }
 
     #[inline]
@@ -411,12 +437,35 @@ impl Evaluator {
 
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
-            Expr::Constant(_) => Some(expr),
+            Expr::Constant(_) | Expr::Lambda(_, _) => Some(expr),
             Expr::Ident(i) => self.get_variable(i),
             Expr::List(l) => {
-                let reduced_head = self.eval(l.first()?.clone())?;
+                let head = l.first()?.clone();
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
-
+                match head.clone() {
+                    Expr::Ident(i) => {
+                        let func = self.get_variable(i.clone()).unwrap();
+                        match func {
+                            Expr::Lambda(arglist, body) => {
+                                self.push_new_scope();
+                                let args = self.reduce(tail).unwrap();
+                                assert_eq!(arglist.len(), args.len());
+                                for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter()) {
+                                    self.push_to_current_scope(arg_key, arg_val);
+                                }
+                                let mut res = None;
+                                for expr in body {
+                                    res = self.eval(expr);
+                                }
+                                self.pop_scope();
+                                return res;
+                            }
+                            _ => (),
+                        }
+                    }
+                    _ => (),
+                }
+                let reduced_head = self.eval(head)?;
                 Some(Expr::Constant(match reduced_head {
                     Expr::Constant(Atom::BuiltIn(bi)) => match bi {
                         BuiltIn::Minus => self.minus(tail)?,
@@ -441,7 +490,7 @@ impl Evaluator {
                             }
                         }
                     },
-                    Expr::Ident(_) => todo!(),
+                    Expr::Lambda(_, _) => return Some(reduced_head),
                     Expr::List(l) => return self.reduce_list(l),
                     _ => todo!(),
                 }))
@@ -449,6 +498,8 @@ impl Evaluator {
         }
     }
 }
+
+// (define square (lambda (x) (* x x)))
 
 fn repl() {
     let stdin = std::io::stdin();
@@ -463,7 +514,7 @@ fn repl() {
         // println!("{:?}", toks);
         let mut parser = Parser::new(toks);
         while let Some(expr) = parser.parse() {
-            // println!("{expr:?}");
+            println!("{expr:?}");
             println!("{:?}", e.eval(expr));
         }
     }
