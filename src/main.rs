@@ -118,7 +118,6 @@ enum Expr {
     Constant(Atom),
     Ident(String),
     List(Vec<Expr>),
-    // Application(Box<Expr>, Vec<Expr>),
 }
 
 struct Parser {
