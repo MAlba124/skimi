@@ -507,7 +507,7 @@ impl Evaluator {
                         .iter()
                         .skip(1)
                         .map(|e| self.get_num_from_expr(e.clone()))
-                        .collect::<Option<Vec<i64>>>()?
+                        .collect::<Option<Vec<i64>>>()?,
                 )
                 .all(|(a, b)| a < b),
         ))
@@ -521,13 +521,12 @@ impl Evaluator {
                 let head = l.first()?.clone();
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
                 if let Expr::Ident(i) = head.clone() {
-                        let func = self.get_variable(i.clone()).unwrap();
+                    let func = self.get_variable(i.clone()).unwrap();
                     if let Expr::Lambda(arglist, body) = func {
                         self.push_new_scope();
                         let args = self.reduce(tail).unwrap();
                         assert_eq!(arglist.len(), args.len());
-                        for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter())
-                        {
+                        for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter()) {
                             self.push_to_current_scope(arg_key, arg_val);
                         }
                         let mut res = None;
@@ -612,8 +611,8 @@ mod tests {
 
     #[test]
     fn test_is_digit() {
-        assert_eq!(is_digit(Some(&'7')), true);
-        assert_eq!(is_digit(Some(&'a')), false);
+        assert!(is_digit(Some(&'7')));
+        assert!(!is_digit(Some(&'a')));
     }
 
     #[test]
@@ -636,7 +635,10 @@ mod tests {
 
     macro_rules! create_take_string_test {
         ($in:expr, $ex:expr) => {
-            assert_eq!(take_string(&mut $in.chars().peekable()), Some(String::from($ex)));
+            assert_eq!(
+                take_string(&mut $in.chars().peekable()),
+                Some(String::from($ex))
+            );
         };
     }
 
@@ -649,65 +651,94 @@ mod tests {
     #[test]
     fn test_take_string() {
         create_take_string_test!("this is a simple string\"", "this is a simple string");
-        create_take_string_test!("this has \\\"escaped quotes\\\"\"", "this has \"escaped quotes\"");
+        create_take_string_test!(
+            "this has \\\"escaped quotes\\\"\"",
+            "this has \"escaped quotes\""
+        );
         create_take_string_test_none!("this is an invalid string\\9\"");
+    }
+
+    macro_rules! ident {
+        ($i:expr) => {
+            Tok::Ident(String::from($i))
+        };
+    }
+
+    macro_rules! num {
+        ($n:expr) => {
+            Tok::Num($n)
+        };
+    }
+
+    macro_rules! opar {
+        () => {
+            Tok::OPar
+        };
+    }
+
+    macro_rules! cpar {
+        () => {
+            Tok::CPar
+        };
     }
 
     #[test]
     fn test_lex() {
         assert_eq!(
             lex("(1 2 3)"),
-            vec![Tok::OPar, Tok::Num(1), Tok::Num(2), Tok::Num(3), Tok::CPar,]
+            vec![opar!(), num!(1), num!(2), num!(3), cpar!(),]
         );
         assert_eq!(
             lex("(+ 1 2)"),
-            vec![Tok::OPar, Tok::Plus, Tok::Num(1), Tok::Num(2), Tok::CPar,]
+            vec![opar!(), Tok::Plus, num!(1), num!(2), cpar!(),]
         );
         assert_eq!(
             lex("(+ 1 2 3)"),
-            vec![
-                Tok::OPar,
-                Tok::Plus,
-                Tok::Num(1),
-                Tok::Num(2),
-                Tok::Num(3),
-                Tok::CPar,
-            ]
+            vec![opar!(), Tok::Plus, num!(1), num!(2), num!(3), cpar!(),]
         );
         assert_eq!(
             lex("(- 1 2)"),
-            vec![Tok::OPar, Tok::Minus, Tok::Num(1), Tok::Num(2), Tok::CPar,]
+            vec![opar!(), Tok::Minus, num!(1), num!(2), cpar!(),]
         );
         assert_eq!(
             lex("(- 1 2 3)"),
-            vec![
-                Tok::OPar,
-                Tok::Minus,
-                Tok::Num(1),
-                Tok::Num(2),
-                Tok::Num(3),
-                Tok::CPar,
-            ]
+            vec![opar!(), Tok::Minus, num!(1), num!(2), num!(3), cpar!(),]
         );
         assert_eq!(
             lex("(- 1 2 -3)"),
-            vec![
-                Tok::OPar,
-                Tok::Minus,
-                Tok::Num(1),
-                Tok::Num(2),
-                Tok::Num(-3),
-                Tok::CPar,
-            ]
+            vec![opar!(), Tok::Minus, num!(1), num!(2), num!(-3), cpar!(),]
         );
+        assert_eq!(lex("#t #f"), vec![Tok::Bool(true), Tok::Bool(false)]);
+        assert_eq!(lex("-427"), vec![num!(-427)]);
         assert_eq!(
             lex("(+ 1 an-identifier)"),
             vec![
-                Tok::OPar,
+                opar!(),
                 Tok::Plus,
-                Tok::Num(1),
-                Tok::Ident(String::from("an-identifier")),
-                Tok::CPar,
+                num!(1),
+                ident!("an-identifier"),
+                cpar!(),
+            ]
+        );
+        assert_eq!(
+            lex("(if (< 1 2) (display 1) (display 0))"),
+            vec![
+                opar!(),
+                ident!("if"),
+                opar!(),
+                Tok::Less,
+                num!(1),
+                num!(2),
+                cpar!(),
+                opar!(),
+                ident!("display"),
+                num!(1),
+                cpar!(),
+                opar!(),
+                ident!("display"),
+                num!(0),
+                cpar!(),
+                cpar!(),
             ]
         );
     }
