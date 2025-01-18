@@ -45,12 +45,20 @@ fn take_ident(iter: &mut Peekable<Chars>) -> Option<String> {
     Some(ident)
 }
 
+/// Expects the iterator to have already popped the first `"`.
 fn take_string(iter: &mut Peekable<Chars>) -> Option<String> {
     let mut s = String::new();
     loop {
-        let next = iter.next().unwrap();
-        if next == '"' {
-            break;
+        let mut next = iter.next()?;
+        match next {
+            '"' => break,
+            '\\' => {
+                next = iter.next()?;
+                if next != '"' {
+                    return None;
+                }
+            }
+            _ => (),
         }
         s.push(next);
     }
@@ -600,7 +608,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{is_digit, lex, take_ident, take_number, Tok};
+    use crate::{is_digit, lex, take_ident, take_number, take_string, Tok};
 
     #[test]
     fn test_is_digit() {
@@ -624,6 +632,25 @@ mod tests {
             take_number(&mut "1241234234)".chars().peekable()),
             Some(1241234234),
         );
+    }
+
+    macro_rules! create_take_string_test {
+        ($in:expr, $ex:expr) => {
+            assert_eq!(take_string(&mut $in.chars().peekable()), Some(String::from($ex)));
+        };
+    }
+
+    macro_rules! create_take_string_test_none {
+        ($in:expr) => {
+            assert_eq!(take_string(&mut $in.chars().peekable()), None);
+        };
+    }
+
+    #[test]
+    fn test_take_string() {
+        create_take_string_test!("this is a simple string\"", "this is a simple string");
+        create_take_string_test!("this has \\\"escaped quotes\\\"\"", "this has \"escaped quotes\"");
+        create_take_string_test_none!("this is an invalid string\\9\"");
     }
 
     #[test]
