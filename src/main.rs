@@ -99,6 +99,7 @@ enum BuiltIn {
     Minus,
     Plus,
     Display,
+    Newline,
     Slash,
     Times,
     If,
@@ -151,6 +152,7 @@ impl Parser {
             Tok::CPar => return None,
             Tok::Ident(i) => match i.as_str() {
                 "display" => Expr::Constant(Atom::BuiltIn(BuiltIn::Display)),
+                "newline" => Expr::Constant(Atom::BuiltIn(BuiltIn::Newline)),
                 "if" => {
                     let mut subs = vec![
                         Expr::Constant(Atom::BuiltIn(BuiltIn::If)),
@@ -218,6 +220,7 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::Slash => String::from("built_in<Slash>"),
                 BuiltIn::Times => String::from("built_in<Times>"),
                 BuiltIn::Display => String::from("built_in<Display>"),
+                BuiltIn::Newline => String::from("built_in<Newline>"),
                 BuiltIn::If => String::from("non_printable<If>"),
                 BuiltIn::Eq => String::from("built_in<Eq>"),
                 BuiltIn::Define => String::from("built_in<Define>"),
@@ -489,6 +492,11 @@ impl Evaluator {
                                 _ => panic!("Expected to get a list but got {:?}", tail[0]),
                             }
                         }
+                        BuiltIn::Newline => {
+                            assert!(tail.is_empty());
+                            println!();
+                            return None;
+                        }
                     },
                     Expr::Lambda(_, _) => return Some(reduced_head),
                     Expr::List(l) => return self.reduce_list(l),
@@ -498,8 +506,6 @@ impl Evaluator {
         }
     }
 }
-
-// (define square (lambda (x) (* x x)))
 
 fn repl() {
     let stdin = std::io::stdin();
