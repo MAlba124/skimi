@@ -181,30 +181,6 @@ impl Parser {
     }
 }
 
-fn get_num_from_expr(e: Expr) -> Option<i64> {
-    if let Expr::Constant(Atom::Num(n)) = e {
-        Some(n)
-    } else {
-        None
-    }
-}
-
-fn get_bool_from_expr(e: Expr) -> Option<bool> {
-    if let Expr::Constant(Atom::Bool(b)) = e {
-        Some(b)
-    } else {
-        None
-    }
-}
-
-fn get_ident_string(e: Expr) -> Option<String> {
-    if let Expr::Ident(i) = e {
-        Some(i)
-    } else {
-        None
-    }
-}
-
 fn fmt_expr(e: Expr) -> String {
     match e {
         Expr::Constant(c) => match c {
@@ -246,6 +222,43 @@ impl Evaluator {
     }
 
     #[inline]
+    fn get_variable(&self, ident: String) -> Option<Expr> {
+        for scope in self.variable_stack.iter().rev() {
+            if scope.contains_key(&ident) {
+                return scope.get(&ident).cloned();
+            }
+        }
+        None
+    }
+
+    #[inline]
+    fn get_num_from_expr(&self, e: Expr) -> Option<i64> {
+        match e {
+            Expr::Constant(Atom::Num(n)) => Some(n),
+            Expr::Ident(i) => self.get_num_from_expr(self.get_variable(i)?),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn get_bool_from_expr(&self, e: Expr) -> Option<bool> {
+        match e {
+            Expr::Constant(Atom::Bool(b)) => Some(b),
+            Expr::Ident(i) => self.get_bool_from_expr(self.get_variable(i)?),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn get_ident_string(&self, e: Expr) -> Option<String> {
+        if let Expr::Ident(i) = e {
+            Some(i)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
     fn reduce(&mut self, exprs: Vec<Expr>) -> Option<Vec<Expr>> {
         let mut reduced = Vec::new();
         for e in exprs {
@@ -271,10 +284,10 @@ impl Evaluator {
     fn minus(&mut self, args: Vec<Expr>) -> Option<Atom> {
         let reduced_args = self.reduce(args)?;
         Some(Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
-            let fe = get_num_from_expr(first_elem)?;
+            let fe = self.get_num_from_expr(first_elem)?;
             reduced_args
                 .into_iter()
-                .map(get_num_from_expr)
+                .map(|e| self.get_num_from_expr(e))
                 .collect::<Option<Vec<i64>>>()?
                 .into_iter()
                 .skip(1)
@@ -289,7 +302,7 @@ impl Evaluator {
         Some(Atom::Num(
             self.reduce(args)?
                 .into_iter()
-                .map(get_num_from_expr)
+                .map(|e| self.get_num_from_expr(e))
                 .collect::<Option<Vec<i64>>>()?
                 .into_iter()
                 .sum(),
@@ -300,10 +313,10 @@ impl Evaluator {
     fn slash(&mut self, args: Vec<Expr>) -> Option<Atom> {
         let reduced_args = self.reduce(args)?;
         Some(Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
-            let fe = get_num_from_expr(first_elem)?;
+            let fe = self.get_num_from_expr(first_elem)?;
             reduced_args
                 .into_iter()
-                .map(get_num_from_expr)
+                .map(|e| self.get_num_from_expr(e))
                 .collect::<Option<Vec<i64>>>()?
                 .into_iter()
                 .skip(1)
@@ -318,7 +331,7 @@ impl Evaluator {
         Some(Atom::Num(
             self.reduce(args)?
                 .into_iter()
-                .map(get_num_from_expr)
+                .map(|e| self.get_num_from_expr(e))
                 .collect::<Option<Vec<i64>>>()?
                 .into_iter()
                 .product(),
@@ -346,7 +359,7 @@ impl Evaluator {
                             let cond = &tail[0];
                             let true_branch = &tail[1];
                             let reduced_cond = self.eval(cond.clone());
-                            if get_bool_from_expr(reduced_cond.unwrap()).unwrap() {
+                            if self.get_bool_from_expr(reduced_cond.unwrap()).unwrap() {
                                 return self.eval(true_branch.clone());
                             } else if tail.len() > 2 {
                                 return self.eval(tail[2].clone());
@@ -365,7 +378,7 @@ impl Evaluator {
                         }
                         BuiltIn::Define => {
                             assert_eq!(tail.len(), 2);
-                            let ident = get_ident_string(tail[0].clone()).unwrap();
+                            let ident = self.get_ident_string(tail[0].clone()).unwrap();
                             let reduced_body = self.eval(tail[1].clone()).unwrap();
                             self.push_to_current_scope(ident, reduced_body);
                             return None;
@@ -383,6 +396,7 @@ impl Evaluator {
 fn repl() {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
+    let mut e = Evaluator::new();
     loop {
         let mut buffer = String::new();
         print!("> ");
@@ -391,7 +405,6 @@ fn repl() {
         let toks = lex(&buffer);
         // println!("{:?}", toks);
         let mut parser = Parser::new(toks);
-        let mut e = Evaluator::new();
         while let Some(expr) = parser.parse() {
             // println!("{expr:?}");
             println!("{:?}", e.eval(expr));
