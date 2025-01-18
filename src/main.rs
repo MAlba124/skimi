@@ -216,7 +216,7 @@ impl Parser {
                         body.push(self.parse().unwrap());
                     }
                     self.pos += 1;
-                    assert!(body.len() > 0);
+                    assert!(!body.is_empty());
                     Expr::Lambda(arglist_idents, Box::new(Expr::List(body)))
                 }
                 _ => Expr::Ident(i.clone()),
@@ -512,33 +512,27 @@ impl Evaluator {
             Expr::List(l) => {
                 let head = l.first()?.clone();
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
-                match head.clone() {
-                    Expr::Ident(i) => {
+                if let Expr::Ident(i) = head.clone() {
                         let func = self.get_variable(i.clone()).unwrap();
-                        match func {
-                            Expr::Lambda(arglist, body) => {
-                                self.push_new_scope();
-                                let args = self.reduce(tail).unwrap();
-                                assert_eq!(arglist.len(), args.len());
-                                for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter())
-                                {
-                                    self.push_to_current_scope(arg_key, arg_val);
-                                }
-                                let mut res = None;
-                                if let Expr::List(body) = *body {
-                                    for expr in body {
-                                        res = self.eval(expr);
-                                    }
-                                } else {
-                                    panic!("TODO");
-                                }
-                                self.pop_scope();
-                                return res;
-                            }
-                            _ => (),
+                    if let Expr::Lambda(arglist, body) = func {
+                        self.push_new_scope();
+                        let args = self.reduce(tail).unwrap();
+                        assert_eq!(arglist.len(), args.len());
+                        for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter())
+                        {
+                            self.push_to_current_scope(arg_key, arg_val);
                         }
+                        let mut res = None;
+                        if let Expr::List(body) = *body {
+                            for expr in body {
+                                res = self.eval(expr);
+                            }
+                        } else {
+                            panic!("TODO");
+                        }
+                        self.pop_scope();
+                        return res;
                     }
-                    _ => (),
                 }
                 let reduced_head = self.eval(head)?;
                 Some(Expr::Constant(match reduced_head {
