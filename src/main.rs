@@ -559,8 +559,8 @@ impl Evaluator {
                         BuiltIn::Modulo => self.modulo(tail)?,
                         BuiltIn::Less => self.less(tail)?,
                     },
-                    Expr::Lambda(_, _) => return Some(reduced_head),
                     Expr::List(l) => return self.reduce_list(l),
+                    Expr::Constant(_) | Expr::Lambda(_, _) => return Some(reduced_head),
                     _ => todo!(),
                 }))
             }
