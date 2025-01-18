@@ -158,7 +158,6 @@ impl Parser {
                     if let Some(false_branch) = self.parse() {
                         subs.push(false_branch);
                     }
-
                     Expr::List(subs)
                 }
                 "define" => {
@@ -167,6 +166,9 @@ impl Parser {
                         self.parse()?,
                         self.parse()?,
                     ])
+                }
+                "lambda" => {
+                    todo!()
                 }
                 _ => Expr::Ident(i.clone()),
             },
@@ -338,9 +340,43 @@ impl Evaluator {
         ))
     }
 
+    #[inline]
+    fn eq(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        let reduced_args = self.reduce(args)?;
+        Some(Atom::Bool(
+            reduced_args
+                .iter()
+                .zip(reduced_args.iter().skip(1))
+                .all(|(a, b)| a == b),
+        ))
+    }
+
+    #[inline]
+    fn if_(&mut self, args: Vec<Expr>) -> Option<Expr> {
+        let cond = &args[0];
+        let true_branch = &args[1];
+        let reduced_cond = self.eval(cond.clone());
+        if self.get_bool_from_expr(reduced_cond.unwrap()).unwrap() {
+            self.eval(true_branch.clone())
+        } else if args.len() > 2 {
+            self.eval(args[2].clone())
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn define(&mut self, args: Vec<Expr>) {
+        assert_eq!(args.len(), 2);
+        let ident = self.get_ident_string(args[0].clone()).unwrap();
+        let reduced_body = self.eval(args[1].clone()).unwrap();
+        self.push_to_current_scope(ident, reduced_body);
+    }
+
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
-            Expr::Constant(_) | Expr::Ident(_) => Some(expr),
+            Expr::Constant(_) => Some(expr),
+            Expr::Ident(i) => self.get_variable(i),
             Expr::List(l) => {
                 let reduced_head = self.eval(l.first()?.clone())?;
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
@@ -355,32 +391,10 @@ impl Evaluator {
                             self.display(tail);
                             return None;
                         }
-                        BuiltIn::If => {
-                            let cond = &tail[0];
-                            let true_branch = &tail[1];
-                            let reduced_cond = self.eval(cond.clone());
-                            if self.get_bool_from_expr(reduced_cond.unwrap()).unwrap() {
-                                return self.eval(true_branch.clone());
-                            } else if tail.len() > 2 {
-                                return self.eval(tail[2].clone());
-                            } else {
-                                return None;
-                            }
-                        }
-                        BuiltIn::Eq => {
-                            let reduced_tail = self.reduce(tail)?;
-                            Atom::Bool(
-                                reduced_tail
-                                    .iter()
-                                    .zip(reduced_tail.iter().skip(1))
-                                    .all(|(a, b)| a == b),
-                            )
-                        }
+                        BuiltIn::If => return self.if_(tail),
+                        BuiltIn::Eq => self.eq(tail)?,
                         BuiltIn::Define => {
-                            assert_eq!(tail.len(), 2);
-                            let ident = self.get_ident_string(tail[0].clone()).unwrap();
-                            let reduced_body = self.eval(tail[1].clone()).unwrap();
-                            self.push_to_current_scope(ident, reduced_body);
+                            self.define(tail);
                             return None;
                         }
                     },
