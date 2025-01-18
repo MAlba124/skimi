@@ -303,7 +303,6 @@ impl Evaluator {
                 if i < len - 1 { " " } else { "" }
             );
         }
-        println!();
     }
 
     #[inline]
