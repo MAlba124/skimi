@@ -18,6 +18,7 @@ enum Tok {
     Eq,
     Percent,
     Less,
+    String(String),
 }
 
 fn is_digit(ch: Option<&char>) -> bool {
@@ -46,6 +47,18 @@ fn take_ident(iter: &mut Peekable<Chars>) -> Option<String> {
         }
     }
     Some(ident)
+}
+
+fn take_string(iter: &mut Peekable<Chars>) -> Option<String> {
+    let mut s = String::new();
+    loop {
+        let next = iter.next().unwrap();
+        if next == '"' {
+            break;
+        }
+        s.push(next);
+    }
+    Some(s)
 }
 
 fn lex(s: &str) -> Vec<Tok> {
@@ -91,6 +104,7 @@ fn lex(s: &str) -> Vec<Tok> {
             }
             '%' => Tok::Percent,
             '<' => Tok::Less,
+            '"' => Tok::String(take_string(&mut iter).unwrap()),
             _ => unreachable!("'{ch}'"),
         });
     }
@@ -119,6 +133,7 @@ enum Atom {
     Num(i64),
     BuiltIn(BuiltIn),
     Bool(bool),
+    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,6 +234,7 @@ impl Parser {
             Tok::Eq => Expr::Constant(Atom::BuiltIn(BuiltIn::Eq)),
             Tok::Percent => Expr::Constant(Atom::BuiltIn(BuiltIn::Modulo)),
             Tok::Less => Expr::Constant(Atom::BuiltIn(BuiltIn::Less)),
+            Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
         })
     }
 }
@@ -242,6 +258,7 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::Less => String::from("built_in<Less>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
+            Atom::String(s) => s,
         },
         Expr::Ident(i) => format!("identifier<{i}>"),
         Expr::List(l) => {
