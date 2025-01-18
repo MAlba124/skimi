@@ -104,6 +104,7 @@ enum BuiltIn {
     If,
     Eq,
     Define,
+    List,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,6 +159,7 @@ impl Parser {
                     if let Some(false_branch) = self.parse() {
                         subs.push(false_branch);
                     }
+
                     Expr::List(subs)
                 }
                 "define" => {
@@ -166,6 +168,15 @@ impl Parser {
                         self.parse()?,
                         self.parse()?,
                     ])
+                }
+                "list" => {
+                    let mut inner_list = Vec::new();
+                    while let Some(e) = self.parse() {
+                        inner_list.push(e);
+                    }
+                    Expr::List(vec![
+                        Expr::Constant(Atom::BuiltIn(BuiltIn::List)),
+                        Expr::List(inner_list),])
                 }
                 "lambda" => {
                     todo!()
@@ -196,11 +207,22 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::If => String::from("non_printable<If>"),
                 BuiltIn::Eq => String::from("built_in<Eq>"),
                 BuiltIn::Define => String::from("built_in<Define>"),
+                BuiltIn::List => String::from("built_in<List>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
         },
         Expr::Ident(i) => format!("identifier<{i}>"),
-        Expr::List(_) => String::from("non_printable<List>"), // TODO
+        Expr::List(l) => {
+            let len = l.len();
+            let mut res = String::new();
+            for (i, e) in l.into_iter().enumerate() {
+                res += &fmt_expr(e);
+                if i < len - 1 {
+                    res += " ";
+                }
+            }
+            res
+        }
     }
 }
 
@@ -373,6 +395,15 @@ impl Evaluator {
         self.push_to_current_scope(ident, reduced_body);
     }
 
+    #[inline]
+    fn reduce_list(&mut self, args: Vec<Expr>) -> Option<Expr> {
+        let mut reduced = Vec::new();
+        for arg in args.into_iter() {
+            reduced.push(self.eval(arg).unwrap());
+        }
+        Some(Expr::List(reduced))
+    }
+
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
             Expr::Constant(_) => Some(expr),
@@ -381,6 +412,8 @@ impl Evaluator {
                 let reduced_head = self.eval(l.first()?.clone())?;
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
 
+                println!("#########\n{:?}", reduced_head);
+                println!("{:?}", tail);
                 Some(Expr::Constant(match reduced_head {
                     Expr::Constant(Atom::BuiltIn(bi)) => match bi {
                         BuiltIn::Minus => self.minus(tail)?,
@@ -397,9 +430,16 @@ impl Evaluator {
                             self.define(tail);
                             return None;
                         }
+                        BuiltIn::List => {
+                            assert_eq!(tail.len(), 1);
+                            match &tail[0] {
+                                Expr::List(l) => return self.reduce_list(l.clone()),
+                                _ => panic!("Expected to get a list but got {:?}", tail[0]),
+                            }
+                        }
                     },
                     Expr::Ident(_) => todo!(),
-                    Expr::List(_) => todo!(),
+                    Expr::List(l) => return self.reduce_list(l),
                     _ => todo!(),
                 }))
             }
