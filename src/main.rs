@@ -16,6 +16,8 @@ enum Tok {
     Times,
     Bool(bool),
     Eq,
+    Percent,
+    Less,
 }
 
 fn is_digit(ch: Option<&char>) -> bool {
@@ -87,6 +89,8 @@ fn lex(s: &str) -> Vec<Tok> {
                     Tok::Minus
                 }
             }
+            '%' => Tok::Percent,
+            '<' => Tok::Less,
             _ => unreachable!("'{ch}'"),
         });
     }
@@ -106,6 +110,8 @@ enum BuiltIn {
     Eq,
     Define,
     List,
+    Modulo,
+    Less,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,7 +126,7 @@ enum Expr {
     Constant(Atom),
     Ident(String),
     List(Vec<Expr>),
-    Lambda(Vec<String>, Vec<Expr>),
+    Lambda(Vec<String>, Box<Expr>),
 }
 
 struct Parser {
@@ -159,8 +165,8 @@ impl Parser {
                         self.parse()?,
                         self.parse()?,
                     ];
-                    if let Some(false_branch) = self.parse() {
-                        subs.push(false_branch);
+                    if self.toks[self.pos] != Tok::CPar {
+                        subs.push(self.parse().unwrap());
                     }
 
                     Expr::List(subs)
@@ -194,8 +200,13 @@ impl Parser {
                         }
                         _ => panic!("TODO"),
                     }
-                    let body = self.parse().unwrap();
-                    Expr::Lambda(arglist_idents, vec![body])
+                    let mut body = Vec::new();
+                    while self.pos < self.toks.len() && self.toks[self.pos] != Tok::CPar {
+                        body.push(self.parse().unwrap());
+                    }
+                    self.pos += 1;
+                    assert!(body.len() > 0);
+                    Expr::Lambda(arglist_idents, Box::new(Expr::List(body)))
                 }
                 _ => Expr::Ident(i.clone()),
             },
@@ -206,6 +217,8 @@ impl Parser {
             Tok::Times => Expr::Constant(Atom::BuiltIn(BuiltIn::Times)),
             Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
             Tok::Eq => Expr::Constant(Atom::BuiltIn(BuiltIn::Eq)),
+            Tok::Percent => Expr::Constant(Atom::BuiltIn(BuiltIn::Modulo)),
+            Tok::Less => Expr::Constant(Atom::BuiltIn(BuiltIn::Less)),
         })
     }
 }
@@ -225,6 +238,8 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::Eq => String::from("built_in<Eq>"),
                 BuiltIn::Define => String::from("built_in<Define>"),
                 BuiltIn::List => String::from("built_in<List>"),
+                BuiltIn::Modulo => String::from("built_in<Modulo>"),
+                BuiltIn::Less => String::from("built_in<Less>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
         },
@@ -438,6 +453,45 @@ impl Evaluator {
         Some(Expr::List(reduced))
     }
 
+    #[inline]
+    fn modulo(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        let reduced_args = self.reduce(args)?;
+        Some(Atom::Num(
+            if let Some(first_elem) = reduced_args.first().cloned() {
+                let fe = self.get_num_from_expr(first_elem)?;
+                reduced_args
+                    .into_iter()
+                    .map(|e| self.get_num_from_expr(e))
+                    .collect::<Option<Vec<i64>>>()?
+                    .into_iter()
+                    .skip(1)
+                    .fold(fe, |a, b| a % b)
+            } else {
+                Default::default()
+            },
+        ))
+    }
+
+    #[inline]
+    fn less(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        let reduced_args = self.reduce(args)?;
+        Some(Atom::Bool(
+            reduced_args
+                .iter()
+                .map(|e| self.get_num_from_expr(e.clone()))
+                .collect::<Option<Vec<i64>>>()?
+                .into_iter()
+                .zip(
+                    reduced_args
+                        .iter()
+                        .skip(1)
+                        .map(|e| self.get_num_from_expr(e.clone()))
+                        .collect::<Option<Vec<i64>>>()?
+                )
+                .all(|(a, b)| a < b),
+        ))
+    }
+
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
             Expr::Constant(_) | Expr::Lambda(_, _) => Some(expr),
@@ -453,12 +507,17 @@ impl Evaluator {
                                 self.push_new_scope();
                                 let args = self.reduce(tail).unwrap();
                                 assert_eq!(arglist.len(), args.len());
-                                for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter()) {
+                                for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter())
+                                {
                                     self.push_to_current_scope(arg_key, arg_val);
                                 }
                                 let mut res = None;
-                                for expr in body {
-                                    res = self.eval(expr);
+                                if let Expr::List(body) = *body {
+                                    for expr in body {
+                                        res = self.eval(expr);
+                                    }
+                                } else {
+                                    panic!("TODO");
                                 }
                                 self.pop_scope();
                                 return res;
@@ -497,6 +556,8 @@ impl Evaluator {
                             println!();
                             return None;
                         }
+                        BuiltIn::Modulo => self.modulo(tail)?,
+                        BuiltIn::Less => self.less(tail)?,
                     },
                     Expr::Lambda(_, _) => return Some(reduced_head),
                     Expr::List(l) => return self.reduce_list(l),
