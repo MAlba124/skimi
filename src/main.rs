@@ -21,99 +21,114 @@ fn is_digit(ch: Option<&char>) -> bool {
     ch.map_or(false, |ch| ch.is_ascii_digit())
 }
 
-fn take_number(iter: &mut Peekable<Chars>) -> Option<i64> {
-    let mut num_str = String::new();
-    while let Some(ch) = iter.peek() {
-        match ch {
-            ' ' | ')' | '\n' => break,
-            '0'..='9' => num_str.push(iter.next().expect("peek() says it's there")),
-            _ => return None,
-        }
-    }
-    num_str.parse::<i64>().ok()
+struct Lexer<'a> {
+    iter: Peekable<Chars<'a>>,
 }
 
-fn take_ident(iter: &mut Peekable<Chars>) -> Option<String> {
-    let mut ident = String::new();
-    while let Some(ch) = iter.peek() {
-        match ch {
-            ' ' | ')' | '\n' => break,
-            '-' | 'a'..='z' | 'A'..='Z' => ident.push(iter.next().expect("peek() says it's there")),
-            _ => return None,
+impl<'a> Lexer<'a> {
+    pub fn new(s: &'a str) -> Lexer<'a> {
+        Self {
+            iter: s.chars().peekable(),
         }
     }
-    Some(ident)
-}
 
-/// Expects the iterator to have already popped the first `"`.
-fn take_string(iter: &mut Peekable<Chars>) -> Option<String> {
-    let mut s = String::new();
-    loop {
-        let mut next = iter.next()?;
-        match next {
-            '"' => break,
-            '\\' => {
-                next = iter.next()?;
-                if next != '"' {
-                    return None;
-                }
+    fn take_number(&mut self) -> Option<i64> {
+        let mut num_str = String::new();
+        while let Some(ch) = self.iter.peek() {
+            match ch {
+                ' ' | ')' | '\n' => break,
+                '0'..='9' => num_str.push(self.iter.next().expect("peek() says it's there")),
+                _ => return None,
             }
-            _ => (),
         }
-        s.push(next);
+        num_str.parse::<i64>().ok()
     }
-    Some(s)
+
+    fn take_ident(&mut self) -> Option<String> {
+        let mut ident = String::new();
+        while let Some(ch) = self.iter.peek() {
+            match ch {
+                ' ' | ')' | '\n' => break,
+                '-' | 'a'..='z' | 'A'..='Z' => ident.push(self.iter.next().expect("peek() says it's there")),
+                _ => return None,
+            }
+        }
+        Some(ident)
+    }
+
+    /// Expects the iterator to have already popped the first `"`.
+    fn take_string(&mut self) -> Option<String> {
+        let mut s = String::new();
+        loop {
+            let mut next = self.iter.next()?;
+            match next {
+                '"' => break,
+                '\\' => {
+                    next = self.iter.next()?;
+                    if next != '"' {
+                        return None;
+                    }
+                }
+                _ => (),
+            }
+            s.push(next);
+        }
+        Some(s)
+    }
+
+    pub fn lex(&mut self) -> Vec<Tok> {
+        let mut toks = Vec::new();
+
+        while let Some(ch) = self.iter.peek() {
+            if ch.is_ascii_digit() {
+                toks.push(Tok::Num(self.take_number().unwrap()));
+                continue;
+            } else if ch.is_ascii_alphabetic() {
+                toks.push(Tok::Ident(self.take_ident().unwrap()));
+                continue;
+            }
+
+            let ch = *ch;
+            self.iter.next().expect("peek() says it's there");
+
+            toks.push(match ch {
+                '\n' | ' ' => continue,
+                '(' => Tok::OPar,
+                ')' => Tok::CPar,
+                '+' => Tok::Plus,
+                '/' => Tok::Slash,
+                '*' => Tok::Times,
+                '=' => Tok::Eq,
+                '#' => {
+                    let next = self.iter.next().unwrap();
+                    if next == 'f' {
+                        Tok::Bool(false)
+                    } else if next == 't' {
+                        Tok::Bool(true)
+                    } else {
+                        panic!("Illegal #{next}");
+                    }
+                }
+                '-' => {
+                    if is_digit(self.iter.peek()) {
+                        Tok::Num(-self.take_number().unwrap())
+                    } else {
+                        Tok::Minus
+                    }
+                }
+                '%' => Tok::Percent,
+                '<' => Tok::Less,
+                '"' => Tok::String(self.take_string().unwrap()),
+                _ => unreachable!("'{ch}'"),
+            });
+        }
+
+        toks
+    }
 }
 
 fn lex(s: &str) -> Vec<Tok> {
-    let mut toks = Vec::new();
-    let mut iter = s.chars().peekable();
-
-    while let Some(ch) = iter.peek() {
-        if ch.is_ascii_digit() {
-            toks.push(Tok::Num(take_number(&mut iter).unwrap()));
-            continue;
-        } else if ch.is_ascii_alphabetic() {
-            toks.push(Tok::Ident(take_ident(&mut iter).unwrap()));
-            continue;
-        }
-
-        let ch = *ch;
-        iter.next().expect("peek() says it's there");
-
-        toks.push(match ch {
-            '\n' | ' ' => continue,
-            '(' => Tok::OPar,
-            ')' => Tok::CPar,
-            '+' => Tok::Plus,
-            '/' => Tok::Slash,
-            '*' => Tok::Times,
-            '=' => Tok::Eq,
-            '#' => {
-                let next = iter.next().unwrap();
-                if next == 'f' {
-                    Tok::Bool(false)
-                } else if next == 't' {
-                    Tok::Bool(true)
-                } else {
-                    panic!("Illegal #{next}");
-                }
-            }
-            '-' => {
-                if is_digit(iter.peek()) {
-                    Tok::Num(-take_number(&mut iter).unwrap())
-                } else {
-                    Tok::Minus
-                }
-            }
-            '%' => Tok::Percent,
-            '<' => Tok::Less,
-            '"' => Tok::String(take_string(&mut iter).unwrap()),
-            _ => unreachable!("'{ch}'"),
-        });
-    }
-
-    toks
+    Lexer::new(s).lex()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -607,7 +622,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{is_digit, lex, take_ident, take_number, take_string, Tok};
+    use crate::{is_digit, lex, Lexer, Tok};
 
     #[test]
     fn test_is_digit() {
@@ -617,26 +632,32 @@ mod tests {
 
     #[test]
     fn test_take_ident() {
+        let mut lexer = Lexer::new("this-is-an-identifier");
         assert_eq!(
-            take_ident(&mut "this-is-an-identifier".chars().peekable()),
+            lexer.take_ident(),
             Some(String::from("this-is-an-identifier"))
         );
     }
 
+    macro_rules! lexer_take_number {
+        ($s:expr, $ex:expr) => {
+            let mut lexer = Lexer::new($s);
+            assert_eq!(lexer.take_number(), $ex);
+        };
+    }
+
     #[test]
     fn test_take_num() {
-        assert_eq!(take_number(&mut "1234".chars().peekable()), Some(1234),);
-        assert_eq!(take_number(&mut "12e4".chars().peekable()), None,);
-        assert_eq!(
-            take_number(&mut "1241234234)".chars().peekable()),
-            Some(1241234234),
-        );
+        lexer_take_number!("1234", Some(1234));
+        lexer_take_number!("12e4", None);
+        lexer_take_number!("1241234234", Some(1241234234));
     }
 
     macro_rules! create_take_string_test {
         ($in:expr, $ex:expr) => {
+            let mut lexer = Lexer::new($in);
             assert_eq!(
-                take_string(&mut $in.chars().peekable()),
+                lexer.take_string(),
                 Some(String::from($ex))
             );
         };
@@ -644,7 +665,10 @@ mod tests {
 
     macro_rules! create_take_string_test_none {
         ($in:expr) => {
-            assert_eq!(take_string(&mut $in.chars().peekable()), None);
+            let mut lexer = Lexer::new($in);
+            assert_eq!(
+                lexer.take_string(), None,
+            );
         };
     }
 
