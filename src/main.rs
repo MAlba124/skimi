@@ -14,11 +14,16 @@ enum Tok {
     Eq,
     Percent,
     Less,
+    Greater,
     String(String),
 }
 
 fn is_digit(ch: Option<&char>) -> bool {
     ch.map_or(false, |ch| ch.is_ascii_digit())
+}
+
+const fn is_terminal(ch: &char) -> bool {
+    matches!(ch, '(' | ')' | '\n' | ' ')
 }
 
 struct Lexer<'a> {
@@ -48,8 +53,10 @@ impl<'a> Lexer<'a> {
     fn take_ident(&mut self) -> Option<String> {
         let mut ident = String::new();
         while let Some(ch) = self.iter.peek() {
+            if is_terminal(ch) {
+                break
+            }
             match ch {
-                ' ' | ')' | '\n' => break,
                 '-' | 'a'..='z' | 'A'..='Z' => {
                     ident.push(self.iter.next().expect("peek() says it's there"))
                 }
@@ -90,10 +97,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn next_is_terminal(&mut self) -> bool {
-        self.iter.peek().map_or(true, |ch| match ch {
-            '(' | ')' | '\n' | ' ' => true,
-            _ => false,
-        })
+        self.iter.peek().map_or(true, is_terminal)
     }
 
     pub fn lex(&mut self) -> Vec<Tok> {
@@ -143,6 +147,7 @@ impl<'a> Lexer<'a> {
                 }
                 '%' => Tok::Percent,
                 '<' => Tok::Less,
+                '>' => Tok::Greater,
                 '"' => Tok::String(self.take_string().unwrap()),
                 _ => unreachable!("'{ch}'"),
             });
@@ -170,6 +175,7 @@ enum BuiltIn {
     List,
     Modulo,
     Less,
+    Greater,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,6 +285,7 @@ impl Parser {
             Tok::Percent => Expr::Constant(Atom::BuiltIn(BuiltIn::Modulo)),
             Tok::Less => Expr::Constant(Atom::BuiltIn(BuiltIn::Less)),
             Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
+            Tok::Greater => Expr::Constant(Atom::BuiltIn(BuiltIn::Greater)),
         })
     }
 }
@@ -300,6 +307,7 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::List => String::from("built_in<List>"),
                 BuiltIn::Modulo => String::from("built_in<Modulo>"),
                 BuiltIn::Less => String::from("built_in<Less>"),
+                BuiltIn::Greater => String::from("built_in<Greater>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
             Atom::String(s) => s,
@@ -534,7 +542,7 @@ impl Evaluator {
     }
 
     #[inline]
-    fn less(&mut self, args: Vec<Expr>) -> Option<Atom> {
+    fn compare_ints(&mut self, args: Vec<Expr>, comparison: impl FnMut((i64, i64)) -> bool) -> Option<Atom> {
         let reduced_args = self.reduce(args)?;
         Some(Atom::Bool(
             reduced_args
@@ -549,8 +557,18 @@ impl Evaluator {
                         .map(|e| self.get_num_from_expr(e.clone()))
                         .collect::<Option<Vec<i64>>>()?,
                 )
-                .all(|(a, b)| a < b),
+                .all(comparison),
         ))
+    }
+
+    #[inline]
+    fn less(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        self.compare_ints(args, |(a, b)| a < b)
+    }
+
+    #[inline]
+    fn greater(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        self.compare_ints(args, |(a, b)| a > b)
     }
 
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
@@ -612,6 +630,7 @@ impl Evaluator {
                         }
                         BuiltIn::Modulo => self.modulo(tail)?,
                         BuiltIn::Less => self.less(tail)?,
+                        BuiltIn::Greater => self.greater(tail)?,
                     },
                     Expr::List(l) => return self.reduce_list(l),
                     Expr::Constant(_) | Expr::Lambda(_, _) => return Some(reduced_head),
