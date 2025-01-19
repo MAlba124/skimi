@@ -23,6 +23,8 @@ enum Tok {
     Less,
     Greater,
     String(String),
+    LessOrEq,
+    GreaterOrEq,
 }
 
 fn is_digit(ch: Option<&char>) -> bool {
@@ -141,7 +143,7 @@ impl<'a> Lexer<'a> {
                         Tok::Bool(false)
                     } else if next == 't' {
                         Tok::Bool(true)
-                    } else {
+                    } else { // \<char>
                         panic!("Illegal #{next}");
                     }
                 }
@@ -153,8 +155,18 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '%' => Tok::Percent,
-                '<' => Tok::Less,
-                '>' => Tok::Greater,
+                '<' => if self.iter.peek() == Some(&'=') {
+                    let _ = self.iter.next().expect("peek() says it's there");
+                    Tok::LessOrEq
+                } else {
+                    Tok::Less
+                },
+                '>' => if self.iter.peek() == Some(&'=') {
+                    let _ = self.iter.next().expect("peek() says it's there");
+                    Tok::GreaterOrEq
+                } else {
+                    Tok::Greater
+                },
                 '"' => Tok::String(self.take_string().unwrap()),
                 _ => unreachable!("'{ch}'"),
             });
@@ -184,6 +196,8 @@ enum BuiltIn {
     Less,
     Greater,
     Set,
+    LessOrEq,
+    GreaterOrEq,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,6 +256,8 @@ impl Parser {
             Tok::Percent => Expr::Constant(Atom::BuiltIn(BuiltIn::Modulo)),
             Tok::Less => Expr::Constant(Atom::BuiltIn(BuiltIn::Less)),
             Tok::Greater => Expr::Constant(Atom::BuiltIn(BuiltIn::Greater)),
+            Tok::LessOrEq => Expr::Constant(Atom::BuiltIn(BuiltIn::LessOrEq)),
+            Tok::GreaterOrEq => Expr::Constant(Atom::BuiltIn(BuiltIn::GreaterOrEq)),
             Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
             Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
             Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
@@ -342,6 +358,8 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::Less => String::from("built_in<Less>"),
                 BuiltIn::Greater => String::from("built_in<Greater>"),
                 BuiltIn::Set => String::from("built_in<Set>"),
+                BuiltIn::LessOrEq => String::from("built_in<LessOrEq>"),
+                BuiltIn::GreaterOrEq => String::from("built_in<GreaterOrEq>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
             Atom::String(s) => s,
@@ -546,7 +564,7 @@ impl Evaluator {
 
     #[inline]
     fn define(&mut self, args: Vec<Expr>) {
-        assert_eq!(args.len(), 2);
+        assert_eq!(args.len(), 2, "`define` takes 2 arguments got: {}", args.len());
         let ident = self.get_ident_string(args[0].clone()).unwrap();
         let reduced_body = self.eval(args[1].clone()).unwrap();
         self.push_to_current_scope(ident, reduced_body);
@@ -554,7 +572,7 @@ impl Evaluator {
 
     #[inline]
     fn set(&mut self, args: Vec<Expr>) {
-        assert_eq!(args.len(), 2);
+        assert_eq!(args.len(), 2, "`set!` takes 2 arguments got: {}", args.len());
         let ident = self.get_ident_string(args[0].clone()).unwrap();
         let reduced_body = self.eval(args[1].clone()).unwrap();
         if !self.has_variable_in_scope(&ident) {
@@ -625,6 +643,16 @@ impl Evaluator {
         self.compare_ints(args, |(a, b)| a > b)
     }
 
+    #[inline]
+    fn less_or_eq(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        self.compare_ints(args, |(a, b)| a <= b)
+    }
+
+    #[inline]
+    fn greater_or_eq(&mut self, args: Vec<Expr>) -> Option<Atom> {
+        self.compare_ints(args, |(a, b)| a >= b)
+    }
+
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
             Expr::Constant(_) | Expr::Lambda(_, _) => Some(expr),
@@ -682,13 +710,15 @@ impl Evaluator {
                             }
                         }
                         BuiltIn::Newline => {
-                            assert!(tail.is_empty());
+                            assert!(tail.is_empty(), "`newline` takes 0 arguments got: {}", tail.len());
                             println!();
                             return None;
                         }
                         BuiltIn::Modulo => self.modulo(tail)?,
                         BuiltIn::Less => self.less(tail)?,
                         BuiltIn::Greater => self.greater(tail)?,
+                        BuiltIn::LessOrEq => self.less_or_eq(tail)?,
+                        BuiltIn::GreaterOrEq => self.greater_or_eq(tail)?,
                     },
                     Expr::List(l) => return self.reduce_list(l),
                     Expr::Constant(_) | Expr::Lambda(_, _) => return Some(reduced_head),
@@ -892,5 +922,11 @@ mod tests {
                 cpar!(),
             ]
         );
+        assert_eq!(lex("<="), vec![Tok::LessOrEq]);
+        assert_eq!(lex(">="), vec![Tok::GreaterOrEq]);
+        assert_eq!(lex("< <="), vec![Tok::Less, Tok::LessOrEq]);
+        assert_eq!(lex("> >="), vec![Tok::Greater, Tok::GreaterOrEq]);
+        assert_eq!(lex("<=  1 2"), vec![Tok::LessOrEq, num!(1), num!(2)]);
+        assert_eq!(lex(">=  1 2"), vec![Tok::GreaterOrEq, num!(1), num!(2)]);
     }
 }
