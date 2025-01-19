@@ -25,6 +25,7 @@ enum Tok {
     String(String),
     LessOrEq,
     GreaterOrEq,
+    Char(char),
 }
 
 fn is_digit(ch: Option<&char>) -> bool {
@@ -138,12 +139,17 @@ impl<'a> Lexer<'a> {
                 '=' => Tok::Eq,
                 '#' => {
                     let next = self.iter.next().unwrap();
-                    assert!(self.next_is_terminal());
                     if next == 'f' {
+                        assert!(self.next_is_terminal());
                         Tok::Bool(false)
                     } else if next == 't' {
+                        assert!(self.next_is_terminal());
                         Tok::Bool(true)
-                    } else { // \<char>
+                    } else if next == '\\' {
+                        let next = self.iter.next().unwrap();
+                        assert!(self.next_is_terminal());
+                        Tok::Char(next)
+                    } else {
                         panic!("Illegal #{next}");
                     }
                 }
@@ -155,18 +161,22 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '%' => Tok::Percent,
-                '<' => if self.iter.peek() == Some(&'=') {
-                    let _ = self.iter.next().expect("peek() says it's there");
-                    Tok::LessOrEq
-                } else {
-                    Tok::Less
-                },
-                '>' => if self.iter.peek() == Some(&'=') {
-                    let _ = self.iter.next().expect("peek() says it's there");
-                    Tok::GreaterOrEq
-                } else {
-                    Tok::Greater
-                },
+                '<' => {
+                    if self.iter.peek() == Some(&'=') {
+                        let _ = self.iter.next().expect("peek() says it's there");
+                        Tok::LessOrEq
+                    } else {
+                        Tok::Less
+                    }
+                }
+                '>' => {
+                    if self.iter.peek() == Some(&'=') {
+                        let _ = self.iter.next().expect("peek() says it's there");
+                        Tok::GreaterOrEq
+                    } else {
+                        Tok::Greater
+                    }
+                }
                 '"' => Tok::String(self.take_string().unwrap()),
                 _ => unreachable!("'{ch}'"),
             });
@@ -206,6 +216,7 @@ enum Atom {
     BuiltIn(BuiltIn),
     Bool(bool),
     String(String),
+    Char(char),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -261,6 +272,7 @@ impl Parser {
             Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
             Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
             Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
+            Tok::Char(c) => Expr::Constant(Atom::Char(*c)),
             _ => panic!("Expected symbol got: {:?}", &self.toks[self.pos]),
         };
         self.pos += 1;
@@ -363,6 +375,7 @@ fn fmt_expr(e: Expr) -> String {
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
             Atom::String(s) => s,
+            Atom::Char(c) => c.to_string(),
         },
         Expr::Ident(i) => format!("identifier<{i}>"),
         Expr::List(l) => {
@@ -564,7 +577,12 @@ impl Evaluator {
 
     #[inline]
     fn define(&mut self, args: Vec<Expr>) {
-        assert_eq!(args.len(), 2, "`define` takes 2 arguments got: {}", args.len());
+        assert_eq!(
+            args.len(),
+            2,
+            "`define` takes 2 arguments got: {}",
+            args.len()
+        );
         let ident = self.get_ident_string(args[0].clone()).unwrap();
         let reduced_body = self.eval(args[1].clone()).unwrap();
         self.push_to_current_scope(ident, reduced_body);
@@ -572,7 +590,12 @@ impl Evaluator {
 
     #[inline]
     fn set(&mut self, args: Vec<Expr>) {
-        assert_eq!(args.len(), 2, "`set!` takes 2 arguments got: {}", args.len());
+        assert_eq!(
+            args.len(),
+            2,
+            "`set!` takes 2 arguments got: {}",
+            args.len()
+        );
         let ident = self.get_ident_string(args[0].clone()).unwrap();
         let reduced_body = self.eval(args[1].clone()).unwrap();
         if !self.has_variable_in_scope(&ident) {
@@ -702,15 +725,13 @@ impl Evaluator {
                             self.set(tail);
                             return None;
                         }
-                        BuiltIn::List => {
-                            assert_eq!(tail.len(), 1);
-                            match &tail[0] {
-                                Expr::List(l) => return self.reduce_list(l.clone()),
-                                _ => panic!("Expected to get a list but got {:?}", tail[0]),
-                            }
-                        }
+                        BuiltIn::List => return Some(Expr::List(self.reduce(tail).unwrap())),
                         BuiltIn::Newline => {
-                            assert!(tail.is_empty(), "`newline` takes 0 arguments got: {}", tail.len());
+                            assert!(
+                                tail.is_empty(),
+                                "`newline` takes 0 arguments got: {}",
+                                tail.len()
+                            );
                             println!();
                             return None;
                         }
@@ -928,5 +949,8 @@ mod tests {
         assert_eq!(lex("> >="), vec![Tok::Greater, Tok::GreaterOrEq]);
         assert_eq!(lex("<=  1 2"), vec![Tok::LessOrEq, num!(1), num!(2)]);
         assert_eq!(lex(">=  1 2"), vec![Tok::GreaterOrEq, num!(1), num!(2)]);
+        assert_eq!(lex("#\\a"), vec![Tok::Char('a')]);
+        assert_eq!(lex("#\\a #t"), vec![Tok::Char('a'), Tok::Bool(true)]);
+        assert_eq!(lex("#f #\\a"), vec![Tok::Bool(false), Tok::Char('a')]);
     }
 }
