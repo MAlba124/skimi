@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Write, iter::Peekable, str::Chars};
+use std::{collections::HashMap, fs::File, io::{Read, Write}, iter::Peekable, path::PathBuf, str::Chars};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Tok {
@@ -243,6 +243,7 @@ impl Parser {
                 ]),
                 "list" => {
                     let mut inner_list = Vec::new();
+                    // Not right
                     while let Some(e) = self.parse() {
                         inner_list.push(e);
                     }
@@ -266,6 +267,7 @@ impl Parser {
                         _ => panic!("TODO"),
                     }
                     let mut body = Vec::new();
+                    // Not right
                     while self.pos < self.toks.len() && self.toks[self.pos] != Tok::CPar {
                         body.push(self.parse().unwrap());
                     }
@@ -663,8 +665,35 @@ fn repl() {
     }
 }
 
+fn evaluate_file(file: &mut File) {
+    let mut code = String::new();
+    file.read_to_string(&mut code).unwrap();
+    let toks = Lexer::new(&code).lex();
+    let mut parser = Parser::new(toks);
+    let mut evaluator = Evaluator::new();
+    while let Some(expr) = parser.parse() {
+        println!("## {expr:?} ##");
+        let _ = evaluator.eval(expr);
+    }
+}
+
 fn main() {
-    repl();
+    let mut files_to_evaluate: Vec<File> = Vec::new();
+
+    for arg in std::env::args().skip(1) {
+        let pb = PathBuf::from(arg);
+        if pb.is_file() {
+            files_to_evaluate.push(File::open(pb).unwrap());
+        }
+    }
+
+    if files_to_evaluate.is_empty() {
+        repl();
+    } else {
+        for mut file in files_to_evaluate.into_iter() {
+            evaluate_file(&mut file);
+        }
+    }
 }
 
 #[cfg(test)]
