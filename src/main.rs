@@ -1,4 +1,11 @@
-use std::{collections::HashMap, fs::File, io::{Read, Write}, iter::Peekable, path::PathBuf, str::Chars};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+    iter::Peekable,
+    path::PathBuf,
+    str::Chars,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Tok {
@@ -54,7 +61,7 @@ impl<'a> Lexer<'a> {
         let mut ident = String::new();
         while let Some(ch) = self.iter.peek() {
             if is_terminal(ch) {
-                break
+                break;
             }
             match ch {
                 '-' | 'a'..='z' | 'A'..='Z' => {
@@ -199,96 +206,130 @@ struct Parser {
     pos: usize,
 }
 
+// TODO: error reporting
 impl Parser {
     pub fn new(toks: Vec<Tok>) -> Self {
         assert!(!toks.is_empty());
         Self { toks, pos: 0 }
     }
 
-    pub fn parse(&mut self) -> Option<Expr> {
-        if self.pos >= self.toks.len() {
-            return None;
-        }
-        let tok = &self.toks[self.pos];
+    fn pop_opar(&mut self) {
+        assert_eq!(self.toks[self.pos], Tok::OPar);
         self.pos += 1;
-        Some(match tok {
-            Tok::OPar => {
-                let mut subs = Vec::new();
-                while self.pos < self.toks.len() && self.toks[self.pos] != Tok::CPar {
-                    subs.push(self.parse());
-                }
-                self.pos += 1;
-                Expr::List(subs.into_iter().collect::<Option<Vec<Expr>>>()?)
-            }
-            Tok::CPar => return None,
+    }
+
+    fn pop_cpar(&mut self) {
+        assert_eq!(self.toks[self.pos], Tok::CPar);
+        self.pos += 1;
+    }
+
+    fn func_or_literal(&mut self) -> Expr {
+        let s = match &self.toks[self.pos] {
             Tok::Ident(i) => match i.as_str() {
                 "display" => Expr::Constant(Atom::BuiltIn(BuiltIn::Display)),
                 "newline" => Expr::Constant(Atom::BuiltIn(BuiltIn::Newline)),
-                "if" => {
-                    let mut subs = vec![
-                        Expr::Constant(Atom::BuiltIn(BuiltIn::If)),
-                        self.parse()?,
-                        self.parse()?,
-                    ];
-                    if self.toks[self.pos] != Tok::CPar {
-                        subs.push(self.parse().unwrap());
-                    }
-
-                    Expr::List(subs)
-                }
-                "define" => Expr::List(vec![
-                    Expr::Constant(Atom::BuiltIn(BuiltIn::Define)),
-                    self.parse()?,
-                    self.parse()?,
-                ]),
-                "list" => {
-                    let mut inner_list = Vec::new();
-                    // Not right
-                    while let Some(e) = self.parse() {
-                        inner_list.push(e);
-                    }
-                    Expr::List(vec![
-                        Expr::Constant(Atom::BuiltIn(BuiltIn::List)),
-                        Expr::List(inner_list),
-                    ])
-                }
-                "lambda" => {
-                    let arglist = self.parse().unwrap();
-                    let mut arglist_idents: Vec<String> = Vec::new();
-                    match arglist {
-                        Expr::List(arglist) => {
-                            for arg in arglist.into_iter() {
-                                match arg {
-                                    Expr::Ident(i) => arglist_idents.push(i),
-                                    _ => panic!("TODO"),
-                                }
-                            }
-                        }
-                        _ => panic!("TODO"),
-                    }
-                    let mut body = Vec::new();
-                    // Not right
-                    while self.pos < self.toks.len() && self.toks[self.pos] != Tok::CPar {
-                        body.push(self.parse().unwrap());
-                    }
-                    self.pos += 1;
-                    assert!(!body.is_empty());
-                    Expr::Lambda(arglist_idents, Box::new(Expr::List(body)))
-                }
+                "if" => Expr::Constant(Atom::BuiltIn(BuiltIn::If)),
+                "define" => Expr::Constant(Atom::BuiltIn(BuiltIn::Define)),
                 _ => Expr::Ident(i.clone()),
             },
-            Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
             Tok::Minus => Expr::Constant(Atom::BuiltIn(BuiltIn::Minus)),
             Tok::Plus => Expr::Constant(Atom::BuiltIn(BuiltIn::Plus)),
             Tok::Slash => Expr::Constant(Atom::BuiltIn(BuiltIn::Slash)),
             Tok::Times => Expr::Constant(Atom::BuiltIn(BuiltIn::Times)),
-            Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
             Tok::Eq => Expr::Constant(Atom::BuiltIn(BuiltIn::Eq)),
             Tok::Percent => Expr::Constant(Atom::BuiltIn(BuiltIn::Modulo)),
             Tok::Less => Expr::Constant(Atom::BuiltIn(BuiltIn::Less)),
-            Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
             Tok::Greater => Expr::Constant(Atom::BuiltIn(BuiltIn::Greater)),
-        })
+            Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
+            Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
+            Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
+            _ => panic!("Expected symbol got: {:?}", &self.toks[self.pos]),
+        };
+        self.pos += 1;
+        s
+    }
+
+    fn args(&mut self) -> Vec<Expr> {
+        let mut args = Vec::new();
+        while self.toks[self.pos] != Tok::CPar {
+            args.push(self.arg());
+        }
+        args
+    }
+
+    fn arg(&mut self) -> Expr {
+        if self.toks[self.pos] == Tok::OPar {
+            self.expr()
+        } else {
+            self.literal()
+        }
+    }
+
+    fn literal(&mut self) -> Expr {
+        let l = match &self.toks[self.pos] {
+            Tok::Ident(i) => Expr::Ident(i.clone()),
+            Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
+            Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
+            Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
+            _ => panic!("Expected literal got: {:?}", &self.toks[self.pos]),
+        };
+        self.pos += 1;
+        l
+    }
+
+    fn expr(&mut self) -> Expr {
+        self.pop_opar();
+        if self.toks[self.pos] == Tok::CPar {
+            self.pos += 1;
+            return Expr::List(vec![]);
+        }
+        let func = self.func_or_literal();
+        if self.toks[self.pos] == Tok::CPar {
+            self.pos += 1;
+            return Expr::List(vec![func]);
+        }
+        let args = self.args();
+        self.pop_cpar();
+
+        if let Expr::Ident(ref i) = func {
+            match i.as_str() {
+                "list" => {
+                    let mut list = vec![Expr::Constant(Atom::BuiltIn(BuiltIn::List))];
+                    list.extend_from_slice(&args);
+                    return Expr::List(list);
+                }
+                "lambda" => {
+                    // println!("func: {:?} args: {:?}", func, args);
+                    let mut lambda_arg_names = Vec::new();
+                    let first_arg = args.first().unwrap();
+                    let Expr::List(names) = first_arg else {
+                        panic!("Expected list of argument names got: {:?}", first_arg);
+                    };
+                    for name in names {
+                        let Expr::Ident(name) = name else {
+                            panic!("Expected identifier got: {:?}", name);
+                        };
+                        lambda_arg_names.push(name.clone());
+                    }
+                    return Expr::Lambda(
+                        lambda_arg_names,
+                        Box::new(Expr::List(args.into_iter().skip(1).collect::<Vec<Expr>>())),
+                    );
+                }
+                _ => (),
+            }
+        }
+
+        let mut list = vec![func];
+        list.extend_from_slice(&args);
+        Expr::List(list)
+    }
+
+    pub fn parse(&mut self) -> Option<Expr> {
+        if self.pos >= self.toks.len() {
+            return None;
+        }
+        Some(self.expr())
     }
 }
 
@@ -544,7 +585,11 @@ impl Evaluator {
     }
 
     #[inline]
-    fn compare_ints(&mut self, args: Vec<Expr>, comparison: impl FnMut((i64, i64)) -> bool) -> Option<Atom> {
+    fn compare_ints(
+        &mut self,
+        args: Vec<Expr>,
+        comparison: impl FnMut((i64, i64)) -> bool,
+    ) -> Option<Atom> {
         let reduced_args = self.reduce(args)?;
         Some(Atom::Bool(
             reduced_args
@@ -672,7 +717,7 @@ fn evaluate_file(file: &mut File) {
     let mut parser = Parser::new(toks);
     let mut evaluator = Evaluator::new();
     while let Some(expr) = parser.parse() {
-        println!("## {expr:?} ##");
+        // println!("## {expr:?} ##");
         let _ = evaluator.eval(expr);
     }
 }
