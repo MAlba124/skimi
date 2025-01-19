@@ -41,6 +41,7 @@ impl<'a> Lexer<'a> {
                 _ => return None,
             }
         }
+        assert!(self.next_is_terminal());
         num_str.parse::<i64>().ok()
     }
 
@@ -55,6 +56,7 @@ impl<'a> Lexer<'a> {
                 _ => return None,
             }
         }
+        assert!(self.next_is_terminal());
         Some(ident)
     }
 
@@ -75,6 +77,7 @@ impl<'a> Lexer<'a> {
             }
             s.push(next);
         }
+        assert!(self.next_is_terminal());
         Some(s)
     }
 
@@ -84,6 +87,13 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+    }
+
+    fn next_is_terminal(&mut self) -> bool {
+        self.iter.peek().map_or(true, |ch| match ch {
+            '(' | ')' | '\n' | ' ' => true,
+            _ => false,
+        })
     }
 
     pub fn lex(&mut self) -> Vec<Tok> {
@@ -115,6 +125,7 @@ impl<'a> Lexer<'a> {
                 '=' => Tok::Eq,
                 '#' => {
                     let next = self.iter.next().unwrap();
+                    assert!(self.next_is_terminal());
                     if next == 'f' {
                         Tok::Bool(false)
                     } else if next == 't' {
