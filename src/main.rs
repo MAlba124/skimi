@@ -76,6 +76,14 @@ impl<'a> Lexer<'a> {
         Some(s)
     }
 
+    fn take_until_newline_or_eof(&mut self) {
+        while let Some(ch) = self.iter.next() {
+            if ch == '\n' {
+                break;
+            }
+        }
+    }
+
     pub fn lex(&mut self) -> Vec<Tok> {
         let mut toks = Vec::new();
 
@@ -93,6 +101,10 @@ impl<'a> Lexer<'a> {
 
             toks.push(match ch {
                 '\n' | ' ' => continue,
+                ';' => {
+                    self.take_until_newline_or_eof();
+                    continue;
+                }
                 '(' => Tok::OPar,
                 ')' => Tok::CPar,
                 '+' => Tok::Plus,
@@ -607,6 +619,9 @@ fn repl() {
         stdout.flush().unwrap();
         stdin.read_line(&mut buffer).unwrap();
         let toks = lex(&buffer);
+        if toks.is_empty() {
+            continue;
+        }
         // println!("{:?}", toks);
         let mut parser = Parser::new(toks);
         while let Some(expr) = parser.parse() {
