@@ -756,7 +756,7 @@ fn repl() {
     let mut e = Evaluator::new();
     loop {
         let mut buffer = String::new();
-        print!("> ");
+        print!("skimi > ");
         stdout.flush().unwrap();
         stdin.read_line(&mut buffer).unwrap();
         let toks = lex(&buffer);
@@ -767,7 +767,9 @@ fn repl() {
         let mut parser = Parser::new(toks);
         while let Some(expr) = parser.parse() {
             println!("{expr:?}");
-            println!("{:?}", e.eval(expr));
+            if let Some(res) = e.eval(expr) {
+                println!("{}", fmt_expr(res));
+            }
         }
     }
 }
