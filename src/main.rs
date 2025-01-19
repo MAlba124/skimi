@@ -49,7 +49,9 @@ impl<'a> Lexer<'a> {
         while let Some(ch) = self.iter.peek() {
             match ch {
                 ' ' | ')' | '\n' => break,
-                '-' | 'a'..='z' | 'A'..='Z' => ident.push(self.iter.next().expect("peek() says it's there")),
+                '-' | 'a'..='z' | 'A'..='Z' => {
+                    ident.push(self.iter.next().expect("peek() says it's there"))
+                }
                 _ => return None,
             }
         }
@@ -77,7 +79,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn take_until_newline_or_eof(&mut self) {
-        while let Some(ch) = self.iter.next() {
+        for ch in self.iter.by_ref() {
             if ch == '\n' {
                 break;
             }
@@ -671,19 +673,14 @@ mod tests {
     macro_rules! create_take_string_test {
         ($in:expr, $ex:expr) => {
             let mut lexer = Lexer::new($in);
-            assert_eq!(
-                lexer.take_string(),
-                Some(String::from($ex))
-            );
+            assert_eq!(lexer.take_string(), Some(String::from($ex)));
         };
     }
 
     macro_rules! create_take_string_test_none {
         ($in:expr) => {
             let mut lexer = Lexer::new($in);
-            assert_eq!(
-                lexer.take_string(), None,
-            );
+            assert_eq!(lexer.take_string(), None,);
         };
     }
 
