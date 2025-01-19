@@ -183,6 +183,7 @@ enum BuiltIn {
     Modulo,
     Less,
     Greater,
+    Set,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +231,7 @@ impl Parser {
                 "newline" => Expr::Constant(Atom::BuiltIn(BuiltIn::Newline)),
                 "if" => Expr::Constant(Atom::BuiltIn(BuiltIn::If)),
                 "define" => Expr::Constant(Atom::BuiltIn(BuiltIn::Define)),
+                "set!" => Expr::Constant(Atom::BuiltIn(BuiltIn::Set)),
                 _ => Expr::Ident(i.clone()),
             },
             Tok::Minus => Expr::Constant(Atom::BuiltIn(BuiltIn::Minus)),
@@ -261,20 +263,8 @@ impl Parser {
         if self.toks[self.pos] == Tok::OPar {
             self.expr()
         } else {
-            self.literal()
+            self.func_or_literal()
         }
-    }
-
-    fn literal(&mut self) -> Expr {
-        let l = match &self.toks[self.pos] {
-            Tok::Ident(i) => Expr::Ident(i.clone()),
-            Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
-            Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
-            Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
-            _ => panic!("Expected literal got: {:?}", &self.toks[self.pos]),
-        };
-        self.pos += 1;
-        l
     }
 
     fn expr(&mut self) -> Expr {
@@ -351,6 +341,7 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::Modulo => String::from("built_in<Modulo>"),
                 BuiltIn::Less => String::from("built_in<Less>"),
                 BuiltIn::Greater => String::from("built_in<Greater>"),
+                BuiltIn::Set => String::from("built_in<Set>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
             Atom::String(s) => s,
@@ -404,20 +395,25 @@ impl Evaluator {
     }
 
     #[inline]
-    fn get_variable(&self, ident: String) -> Option<Expr> {
+    fn get_variable(&self, ident: &str) -> Option<Expr> {
         for scope in self.variable_stack.iter().rev() {
-            if scope.contains_key(&ident) {
-                return scope.get(&ident).cloned();
+            if scope.contains_key(ident) {
+                return scope.get(ident).cloned();
             }
         }
         None
     }
 
     #[inline]
+    fn has_variable_in_scope(&self, ident: &str) -> bool {
+        self.get_variable(ident).is_some()
+    }
+
+    #[inline]
     fn get_num_from_expr(&self, e: Expr) -> Option<i64> {
         match e {
             Expr::Constant(Atom::Num(n)) => Some(n),
-            Expr::Ident(i) => self.get_num_from_expr(self.get_variable(i)?),
+            Expr::Ident(i) => self.get_num_from_expr(self.get_variable(&i)?),
             _ => None,
         }
     }
@@ -426,7 +422,7 @@ impl Evaluator {
     fn get_bool_from_expr(&self, e: Expr) -> Option<bool> {
         match e {
             Expr::Constant(Atom::Bool(b)) => Some(b),
-            Expr::Ident(i) => self.get_bool_from_expr(self.get_variable(i)?),
+            Expr::Ident(i) => self.get_bool_from_expr(self.get_variable(&i)?),
             _ => None,
         }
     }
@@ -557,6 +553,17 @@ impl Evaluator {
     }
 
     #[inline]
+    fn set(&mut self, args: Vec<Expr>) {
+        assert_eq!(args.len(), 2);
+        let ident = self.get_ident_string(args[0].clone()).unwrap();
+        let reduced_body = self.eval(args[1].clone()).unwrap();
+        if !self.has_variable_in_scope(&ident) {
+            panic!("Attempt to update a variable that is not in scope: {ident}");
+        }
+        self.push_to_current_scope(ident, reduced_body);
+    }
+
+    #[inline]
     fn reduce_list(&mut self, args: Vec<Expr>) -> Option<Expr> {
         let mut reduced = Vec::new();
         for arg in args.into_iter() {
@@ -621,12 +628,12 @@ impl Evaluator {
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
             Expr::Constant(_) | Expr::Lambda(_, _) => Some(expr),
-            Expr::Ident(i) => self.get_variable(i),
+            Expr::Ident(i) => self.get_variable(&i),
             Expr::List(l) => {
                 let head = l.first()?.clone();
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
                 if let Expr::Ident(i) = head.clone() {
-                    let func = self.get_variable(i.clone()).unwrap();
+                    let func = self.get_variable(&i).unwrap();
                     if let Expr::Lambda(arglist, body) = func {
                         self.push_new_scope();
                         let args = self.reduce(tail).unwrap();
@@ -661,6 +668,10 @@ impl Evaluator {
                         BuiltIn::Eq => self.eq(tail)?,
                         BuiltIn::Define => {
                             self.define(tail);
+                            return None;
+                        }
+                        BuiltIn::Set => {
+                            self.set(tail);
                             return None;
                         }
                         BuiltIn::List => {
