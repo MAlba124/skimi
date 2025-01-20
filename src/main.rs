@@ -1,10 +1,5 @@
 use std::{
-    collections::HashMap,
-    fs::File,
-    io::{Read, Write},
-    iter::Peekable,
-    path::PathBuf,
-    str::Chars,
+    collections::HashMap, fs::File, io::{Read, Write}, iter::Peekable, path::PathBuf, str::Chars
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -186,6 +181,13 @@ impl<'a> Lexer<'a> {
     }
 }
 
+// TODO
+// macro_rules! lex {
+//     ($s:expr) => {
+//         Lexer::new($s).lex()
+//     };
+// }
+
 fn lex(s: &str) -> Vec<Tok> {
     Lexer::new(s).lex()
 }
@@ -220,11 +222,19 @@ enum Atom {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct DoVariable {
+    pub ident: String,
+    pub init: Expr,
+    pub step: Expr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Expr {
     Constant(Atom),
     Ident(String),
     List(Vec<Expr>),
     Lambda(Vec<String>, Box<Expr>),
+    Do(Vec<DoVariable>, Box<Expr>, Vec<Expr>, Vec<Expr>),
 }
 
 struct Parser {
@@ -295,13 +305,14 @@ impl Parser {
         }
     }
 
+    // TODO: make this crap cleaner
     fn expr(&mut self) -> Expr {
         self.pop_opar();
         if self.toks[self.pos] == Tok::CPar {
             self.pos += 1;
             return Expr::List(vec![]);
         }
-        let func = self.func_or_literal();
+        let func = self.arg();
         if self.toks[self.pos] == Tok::CPar {
             self.pos += 1;
             return Expr::List(vec![func]);
@@ -333,6 +344,41 @@ impl Parser {
                         lambda_arg_names,
                         Box::new(Expr::List(args.into_iter().skip(1).collect::<Vec<Expr>>())),
                     );
+                }
+                "do" => {
+                    let variable_list = match &args[0] {
+                        Expr::List(l) => {
+                            let mut vars = Vec::new();
+                            for var in l {
+                                match var {
+                                    Expr::List(var) => {
+                                        assert_eq!(var.len(), 3);
+                                        let Expr::Ident(ident) = var[0].clone() else {
+                                            panic!("Expected an identifier got: {:?}", var[0]);
+                                        };
+                                        let init = var[1].clone();
+                                        let step = var[2].clone();
+                                        vars.push(DoVariable { ident, init, step });
+                                    }
+                                    _ => panic!("Expected a list got: {:?}", args[0]),
+                                }
+                            }
+                            vars
+                        }
+                        _ => panic!("Expected a list got: {:?}", args[0]),
+                    };
+                    let (test, after_test_exprs) = match &args[1] {
+                        Expr::List(l) => {
+                            if l.len() > 1 {
+                                (l[0].clone(), l[1..].to_vec())
+                            } else {
+                                (l[0].clone(), Vec::new())
+                            }
+                        }
+                        _ => panic!("Expected a list got: {:?}", args[1]),
+                    };
+                    let commands = args[2..].to_vec();
+                    return Expr::Do(variable_list, Box::new(test), after_test_exprs, commands);
                 }
                 _ => (),
             }
@@ -390,6 +436,7 @@ fn fmt_expr(e: Expr) -> String {
             res
         }
         Expr::Lambda(_, _) => String::from("non_printable<Lambda>"),
+        Expr::Do(_, _, _, _) => String::from("non_printable<Do>"),
     }
 }
 
@@ -746,6 +793,33 @@ impl Evaluator {
                     _ => todo!(),
                 }))
             }
+            Expr::Do(vars, test, after_test_exprs, commands) => {
+                self.push_new_scope();
+                for var in &vars {
+                    self.push_to_current_scope(var.ident.clone(), var.init.clone());
+                }
+                let mut res = None;
+                loop {
+                    let test_res = self.eval(*test.clone()).unwrap();
+                    if self.get_bool_from_expr(test_res).unwrap() {
+                        for after_test_expr in after_test_exprs {
+                            res = self.eval(after_test_expr);
+                        }
+                        break;
+                    }
+
+                    for command in commands.clone() {
+                        self.eval(command);
+                    }
+
+                    for var in &vars {
+                        let new_val = self.eval(var.step.clone()).unwrap();
+                        self.push_to_current_scope(var.ident.clone(), new_val);
+                    }
+                }
+                self.pop_scope();
+                return res;
+            }
         }
     }
 }
@@ -781,7 +855,6 @@ fn evaluate_file(file: &mut File) {
     let mut parser = Parser::new(toks);
     let mut evaluator = Evaluator::new();
     while let Some(expr) = parser.parse() {
-        // println!("## {expr:?} ##");
         let _ = evaluator.eval(expr);
     }
 }

@@ -32,6 +32,31 @@ FizzBuzz
 (fizz-buzz 1 100)
 ```
 
+Do loop
+
+```scheme
+(do ((x 0 (+ x 1)))
+    ((>= x 10) (display "Loop finished") (newline))
+    (display x)
+    (newline))
+```
+
+This will output:
+
+```console
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+Loop finished
+```
+
 #### References
 
 - [https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs](https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs)
