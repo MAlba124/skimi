@@ -854,7 +854,7 @@ fn repl() {
         // println!("{:?}", toks);
         let mut parser = Parser::new(toks);
         while let Some(expr) = parser.parse() {
-            println!("{expr:?}");
+            // println!("{expr:?}");
             if let Some(res) = e.eval(expr) {
                 println!("{}", fmt_expr(res));
             }

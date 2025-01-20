@@ -4,6 +4,24 @@ Interpreter for a scheme like language.
 
 ## Examples
 
+Some small examples running in the REPL
+
+```console
+skimi > (display "Hello, World!") (newline)
+Hello, World!
+skimi > (= 1 1)
+#t
+skimi > (= 1 2)
+#f
+skimi > (> 10 9 8 7 6)
+#t
+skimi > (define my-variable 20)
+skimi > (+ my-variable 10)
+30
+skimi > (if (< my-variable 100) (display my-variable "is less than 100")) (newline)
+20 is less than 100
+```
+
 Fibonacci sequence
 
 ```scheme
