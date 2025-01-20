@@ -1,5 +1,10 @@
 use std::{
-    collections::HashMap, fs::File, io::{Read, Write}, iter::Peekable, path::PathBuf, str::Chars
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+    iter::Peekable,
+    path::PathBuf,
+    str::Chars,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -237,6 +242,15 @@ enum Expr {
     Do(Vec<DoVariable>, Box<Expr>, Vec<Expr>, Vec<Expr>),
 }
 
+macro_rules! list {
+    ($(),+) => {
+        Expr::List(vec![])
+    };
+    ($($exprs:expr),+) => {
+        Expr::List(vec![$($exprs),+])
+    };
+}
+
 struct Parser {
     toks: Vec<Tok>,
     pos: usize,
@@ -310,12 +324,12 @@ impl Parser {
         self.pop_opar();
         if self.toks[self.pos] == Tok::CPar {
             self.pos += 1;
-            return Expr::List(vec![]);
+            return list![];
         }
         let func = self.arg();
         if self.toks[self.pos] == Tok::CPar {
             self.pos += 1;
-            return Expr::List(vec![func]);
+            return list![func];
         }
         let args = self.args();
         self.pop_cpar();
@@ -880,7 +894,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{is_digit, lex, Lexer, Tok};
+    use crate::{is_digit, lex, Atom, BuiltIn, DoVariable, Expr, Lexer, Parser, Tok};
 
     #[test]
     fn test_is_digit() {
@@ -1027,5 +1041,105 @@ mod tests {
         assert_eq!(lex("#\\a"), vec![Tok::Char('a')]);
         assert_eq!(lex("#\\a #t"), vec![Tok::Char('a'), Tok::Bool(true)]);
         assert_eq!(lex("#f #\\a"), vec![Tok::Bool(false), Tok::Char('a')]);
+    }
+
+    macro_rules! lex_and_parse_eq {
+        ($in:expr, $ex:expr) => {
+            let mut parser = Parser::new(lex($in));
+            assert_eq!(parser.parse(), Some($ex));
+            assert_eq!(parser.parse(), None);
+        };
+    }
+
+    macro_rules! exnum {
+        ($n:expr) => {
+            Expr::Constant(Atom::Num($n))
+        };
+    }
+
+    macro_rules! exstr {
+        ($s:expr) => {
+            Expr::Constant(Atom::String(String::from($s)))
+        };
+    }
+
+    macro_rules! exident {
+        ($i:expr) => {
+            Expr::Ident(String::from($i))
+        };
+    }
+
+    macro_rules! bi {
+        ($b:ident) => {
+            Expr::Constant(Atom::BuiltIn(BuiltIn::$b))
+        };
+    }
+
+    #[test]
+    fn test_parser_addition() {
+        lex_and_parse_eq!("(+ 1 2)", list![bi!(Plus), exnum!(1), exnum!(2)]);
+    }
+
+    #[test]
+    fn test_parser_nested_lists() {
+        lex_and_parse_eq!(
+            "((1 2) (3 4))",
+            list![list![exnum!(1), exnum!(2)], list![exnum!(3), exnum!(4)]]
+        );
+        lex_and_parse_eq!(
+            "((1 (2 3 (4 (5)))))",
+            list![list![
+                exnum!(1),
+                list![exnum!(2), exnum!(3), list![exnum!(4), list![exnum!(5)]]]
+            ]]
+        );
+        lex_and_parse_eq!(
+            "(display (1 (2 3 (4 (5)))))",
+            list![
+                bi!(Display),
+                list![
+                    exnum!(1),
+                    list![exnum!(2), exnum!(3), list![exnum!(4), list![exnum!(5)]]]
+                ]
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parser_if() {
+        lex_and_parse_eq!(
+            "(if (< 1 10) (display \"1 is less than 10\"))",
+            list![
+                bi!(If),
+                list![bi!(Less), exnum!(1), exnum!(10)],
+                list![bi!(Display), exstr!("1 is less than 10")]
+            ]
+        );
+        lex_and_parse_eq!(
+            "(if (< 1 10) (display \"1 is less than 10\") (display \"1 is not less than 10\"))",
+            list![
+                bi!(If),
+                list![bi!(Less), exnum!(1), exnum!(10)],
+                list![bi!(Display), exstr!("1 is less than 10")],
+                list![bi!(Display), exstr!("1 is not less than 10")]
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parser_do() {
+        lex_and_parse_eq!(
+            "(do ((x 0 (+ x 1))) ((>= x 10) (display \"Loop finished\") (newline)) (display x) (newline))",
+            Expr::Do(
+                vec![
+                    DoVariable { ident: String::from("x"), init: exnum!(0), step: list![bi!(Plus), exident!("x"), exnum!(1)] }
+                ],
+                Box::new(
+                    list![bi!(GreaterOrEq), exident!("x"), exnum!(10)]
+                ),
+                vec![list![bi!(Display), exstr!("Loop finished")], list!(bi!(Newline))],
+                vec![list![bi!(Display), exident!("x")], list![bi!(Newline)]]
+            )
+        );
     }
 }

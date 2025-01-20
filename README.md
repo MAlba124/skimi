@@ -60,3 +60,4 @@ Loop finished
 #### References
 
 - [https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs](https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs)
+- [https://www.r6rs.org/final/html/r6rs-lib/r6rs-lib-Z-H-6.html#node_chap_5](https://www.r6rs.org/final/html/r6rs-lib/r6rs-lib-Z-H-6.html#node_chap_5)
