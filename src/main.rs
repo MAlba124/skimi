@@ -67,7 +67,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
             match ch {
-                '-' | 'a'..='z' | 'A'..='Z' => {
+                '-' | 'a'..='z' | 'A'..='Z' | '!' => {
                     ident.push(self.iter.next().expect("peek() says it's there"))
                 }
                 _ => return None,
@@ -1011,6 +1011,8 @@ mod tests {
                 cpar!(),
             ]
         );
+        assert_eq!(lex("identifier-with!"), vec![ident!("identifier-with!")]);
+        assert_eq!(lex("set!"), vec![ident!("set!")]);
         assert_eq!(
             lex("(if (< 1 2) (display 1) (display 0))"),
             vec![
