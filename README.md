@@ -37,16 +37,15 @@ FizzBuzz
 
 ```scheme
 (define fizz-buzz
-    (lambda (i n)
-        (if (= (% i 15) 0)
-            (display "FizzBuzz")
-            (if (= (% i 3) 0)
-                (display "Fizz")
-                (if (= (% i 5) 0)
-                    (display "Buzz")
-                    (display i))))
-    (newline)
-    (if (< i n) (fizz-buzz (+ i 1) n))))
+  (lambda (i n)
+    (cond
+     ((= (% i 15) 0) (display "FizzBuzz"))
+     ((= (% i 3) 0) (display "Fizz"))
+     ((= (% i 5) 0) (display "Buzz"))
+     (#t (display i)))
+ (newline)
+ (if (< i n) (fizz-buzz (+ i 1) n))))
+
 (fizz-buzz 1 100)
 ```
 
