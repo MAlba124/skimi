@@ -832,7 +832,7 @@ impl Evaluator {
                     }
                 }
                 self.pop_scope();
-                return res;
+                res
             }
         }
     }
