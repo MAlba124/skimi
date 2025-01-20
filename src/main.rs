@@ -638,9 +638,8 @@ impl Evaluator {
 
     #[inline]
     fn define(&mut self, args: Vec<Expr>) {
-        assert_eq!(
-            args.len(),
-            2,
+        assert!(
+            args.len() == 2,
             "`define` takes 2 arguments got: {}",
             args.len()
         );
@@ -651,17 +650,17 @@ impl Evaluator {
 
     #[inline]
     fn set(&mut self, args: Vec<Expr>) {
-        assert_eq!(
-            args.len(),
-            2,
+        assert!(
+            args.len() == 2,
             "`set!` takes 2 arguments got: {}",
             args.len()
         );
         let ident = self.get_ident_string(args[0].clone()).unwrap();
         let reduced_body = self.eval(args[1].clone()).unwrap();
-        if !self.has_variable_in_scope(&ident) {
-            panic!("Attempt to update a variable that is not in scope: {ident}");
-        }
+        assert!(
+            self.has_variable_in_scope(&ident),
+            "Attempted to update a variable that is not in scope: {ident}"
+        );
         self.push_to_current_scope(ident, reduced_body);
     }
 
@@ -740,16 +739,26 @@ impl Evaluator {
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
             Expr::Constant(_) | Expr::Lambda(_, _) => Some(expr),
-            Expr::Ident(i) => self.get_variable(&i),
+            Expr::Ident(i) => match self.get_variable(&i) {
+                Some(e) => Some(e),
+                None => panic!("Variable `{i}` does not exist"),
+            },
             Expr::List(l) => {
                 let head = l.first()?.clone();
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
                 if let Expr::Ident(i) = head.clone() {
-                    let func = self.get_variable(&i).unwrap();
+                    let Some(func) = self.get_variable(&i) else {
+                        panic!("Variable `{i}` does not exist");
+                    };
                     if let Expr::Lambda(arglist, body) = func {
                         self.push_new_scope();
                         let args = self.reduce(tail).unwrap();
-                        assert_eq!(arglist.len(), args.len());
+                        assert!(
+                            arglist.len() == args.len(),
+                            "lambda `{i}` takes {} arguments got {}",
+                            arglist.len(),
+                            args.len()
+                        );
                         for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter()) {
                             self.push_to_current_scope(arg_key, arg_val);
                         }
@@ -759,7 +768,7 @@ impl Evaluator {
                                 res = self.eval(expr);
                             }
                         } else {
-                            panic!("TODO");
+                            panic!("Body of lambda `{i}` is not a list");
                         }
                         self.pop_scope();
                         return res;
@@ -894,7 +903,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{is_digit, lex, Atom, BuiltIn, DoVariable, Expr, Lexer, Parser, Tok, Evaluator};
+    use crate::{is_digit, lex, Atom, BuiltIn, DoVariable, Evaluator, Expr, Lexer, Parser, Tok};
 
     #[test]
     fn test_is_digit() {
@@ -1191,15 +1200,27 @@ mod tests {
         eval_eq_some!("(/ (+ 100 50) 5)", exnum!((100 + 50) / 5));
         eval_eq_some!("(+ 2 (* 3 4) (- 10 5))", exnum!(2 + (3 * 4) + (10 - 5)));
         eval_eq_some!("(- (* 6 7) (/ 42 7))", exnum!((6 * 7) - (42 / 7)));
-        eval_eq_some!("(+ (* 2 2) (* 3 3) (* 4 4))", exnum!((2 * 2) + (3 * 3) + (4 * 4)));
+        eval_eq_some!(
+            "(+ (* 2 2) (* 3 3) (* 4 4))",
+            exnum!((2 * 2) + (3 * 3) + (4 * 4))
+        );
         eval_eq_some!("(/ (* 5 5) (+ 5 5))", exnum!((5 * 5) / (5 + 5)));
         eval_eq_some!("(* 1 2 3 4 5)", exnum!(1 * 2 * 3 * 4 * 5));
         eval_eq_some!("(/ 1000 10 10)", exnum!(1000 / 10 / 10));
         eval_eq_some!("(- 100 20 30 10)", exnum!(100 - 20 - 30 - 10));
-        eval_eq_some!("(+ (* 2 3) (* 3 4) (* 4 5))", exnum!((2 * 3) + (3 * 4) + (4 * 5)));
-        eval_eq_some!("(+ 1 (* 2 (+ 3 4)) (- 10 5))", exnum!(1 + (2 * (3 + 4)) + (10 - 5)));
+        eval_eq_some!(
+            "(+ (* 2 3) (* 3 4) (* 4 5))",
+            exnum!((2 * 3) + (3 * 4) + (4 * 5))
+        );
+        eval_eq_some!(
+            "(+ 1 (* 2 (+ 3 4)) (- 10 5))",
+            exnum!(1 + (2 * (3 + 4)) + (10 - 5))
+        );
         eval_eq_some!("(- (* 8 2) (/ 16 4))", exnum!((8 * 2) - (16 / 4)));
-        eval_eq_some!("(+ (* 3 3) (* 2 2) (* 1 1))", exnum!((3 * 3) + (2 * 2) + (1 * 1)));
+        eval_eq_some!(
+            "(+ (* 3 3) (* 2 2) (* 1 1))",
+            exnum!((3 * 3) + (2 * 2) + (1 * 1))
+        );
         eval_eq_some!("(/ (+ 100 200) 10)", exnum!((100 + 200) / 10));
         eval_eq_some!("(+ 5 (* 2 3))", exnum!(5 + (2 * 3)));
         eval_eq_some!("(- 50 (* 5 2))", exnum!(50 - (5 * 2)));
@@ -1207,22 +1228,34 @@ mod tests {
         eval_eq_some!("(/ (* 30 2) 15)", exnum!((30 * 2) / 15));
         eval_eq_some!("(+ 10 (- 5 2))", exnum!(10 + (5 - 2)));
         eval_eq_some!("(- (* 4 5) (+ 10 5))", exnum!((4 * 5) - (10 + 5)));
-        eval_eq_some!("(+ (* 3 3) (* 4 4) (* 5 5))", exnum!((3 * 3) + (4 * 4) + (5 * 5)));
+        eval_eq_some!(
+            "(+ (* 3 3) (* 4 4) (* 5 5))",
+            exnum!((3 * 3) + (4 * 4) + (5 * 5))
+        );
         eval_eq_some!("(/ (+ 200 300) 100)", exnum!((200 + 300) / 100));
         eval_eq_some!("(/ 720 10 12)", exnum!(720 / 10 / 12));
         eval_eq_some!("(- 200 50 25 25)", exnum!(200 - 50 - 25 - 25));
         eval_eq_some!("(+ (* 2 5) (* 3 7))", exnum!((2 * 5) + (3 * 7)));
         eval_eq_some!("(+ 1 (* 2 (+ 3 5)))", exnum!(1 + (2 * (3 + 5))));
         eval_eq_some!("(- (* 9 3) (/ 27 3))", exnum!((9 * 3) - (27 / 3)));
-        eval_eq_some!("(+ (* 2 2) (* 3 3) (* 4 4) (* 5 5))", exnum!((2 * 2) + (3 * 3) + (4 * 4) + (5 * 5)));
+        eval_eq_some!(
+            "(+ (* 2 2) (* 3 3) (* 4 4) (* 5 5))",
+            exnum!((2 * 2) + (3 * 3) + (4 * 4) + (5 * 5))
+        );
         eval_eq_some!("(/ (+ 1000 2000) 100)", exnum!((1000 + 2000) / 100));
         eval_eq_some!("(+ 5 (* 3 4) (- 20 10))", exnum!(5 + (3 * 4) + (20 - 10)));
         eval_eq_some!("(- (* 6 3) (/ 18 3))", exnum!((6 * 3) - (18 / 3)));
-        eval_eq_some!("(+ (* 5 5) (* 4 4) (* 3 3) (* 2 2))", exnum!((5 * 5) + (4 * 4) + (3 * 3) + (2 * 2)));
+        eval_eq_some!(
+            "(+ (* 5 5) (* 4 4) (* 3 3) (* 2 2))",
+            exnum!((5 * 5) + (4 * 4) + (3 * 3) + (2 * 2))
+        );
         eval_eq_some!("(/ (+ 500 500) 100)", exnum!((500 + 500) / 100));
         eval_eq_some!("(+ 10 (* 2 3) (- 15 5))", exnum!(10 + (2 * 3) + (15 - 5)));
         eval_eq_some!("(- (* 8 4) (/ 32 4))", exnum!((8 * 4) - (32 / 4)));
-        eval_eq_some!("(+ (* 3 3) (* 2 2) (* 1 1) (* 0 0))", exnum!((3 * 3) + (2 * 2) + (1 * 1) + (0 * 0)));
+        eval_eq_some!(
+            "(+ (* 3 3) (* 2 2) (* 1 1) (* 0 0))",
+            exnum!((3 * 3) + (2 * 2) + (1 * 1) + (0 * 0))
+        );
         eval_eq_some!("(/ (+ 10000 20000) 1000)", exnum!((10000 + 20000) / 1000));
         eval_eq_some!("(* 1 2 3 4 5 6 7)", exnum!(1 * 2 * 3 * 4 * 5 * 6 * 7));
         eval_eq_some!("(% 10 3)", exnum!(10 % 3));
@@ -1234,20 +1267,47 @@ mod tests {
         eval_eq_some!("(- (* 5 4) (% 18 5))", exnum!((5 * 4) - (18 % 5)));
         eval_eq_some!("(+ 1 (* 2 (% 9 4)))", exnum!(1 + (2 * (9 % 4))));
         eval_eq_some!("(- (* 6 3) (% 27 4))", exnum!((6 * 3) - (27 % 4)));
-        eval_eq_some!("(+ (* 2 2) (* 3 3) (% 10 3))", exnum!((2 * 2) + (3 * 3) + (10 % 3)));
+        eval_eq_some!(
+            "(+ (* 2 2) (* 3 3) (% 10 3))",
+            exnum!((2 * 2) + (3 * 3) + (10 % 3))
+        );
         eval_eq_some!("(/ (+ 100 200) (% 50 7))", exnum!((100 + 200) / (50 % 7)));
         eval_eq_some!("(+ 5 (* 3 4) (% 20 6))", exnum!(5 + (3 * 4) + (20 % 6)));
         eval_eq_some!("(- (* 8 4) (% 32 5))", exnum!((8 * 4) - (32 % 5)));
-        eval_eq_some!("(+ (* 3 3) (* 2 2) (* 1 1) (% 15 4))", exnum!((3 * 3) + (2 * 2) + (1 * 1) + (15 % 4)));
-        eval_eq_some!("(/ (+ 10000 20000) (% 1000 3))", exnum!((10000 + 20000) / (1000 % 3)));
-        eval_eq_some!("(+ 1 2 3 4 5 6 7 8 (% 9 4))", exnum!(1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + (9 % 4)));
-        eval_eq_some!("(* 1 2 3 4 5 (% 30 7))", exnum!(1 * 2 * 3 * 4 * 5 * (30 % 7)));
+        eval_eq_some!(
+            "(+ (* 3 3) (* 2 2) (* 1 1) (% 15 4))",
+            exnum!((3 * 3) + (2 * 2) + (1 * 1) + (15 % 4))
+        );
+        eval_eq_some!(
+            "(/ (+ 10000 20000) (% 1000 3))",
+            exnum!((10000 + 20000) / (1000 % 3))
+        );
+        eval_eq_some!(
+            "(+ 1 2 3 4 5 6 7 8 (% 9 4))",
+            exnum!(1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + (9 % 4))
+        );
+        eval_eq_some!(
+            "(* 1 2 3 4 5 (% 30 7))",
+            exnum!(1 * 2 * 3 * 4 * 5 * (30 % 7))
+        );
         eval_eq_some!("(/ 5040 (% 100 9) 8)", exnum!(5040 / (100 % 9) / 8));
-        eval_eq_some!("(- 100 (% 25 6) (% 10 3))", exnum!(100 - (25 % 6) - (10 % 3)));
-        eval_eq_some!("(+ (* 2 3) (* 4 5) (% 12 5))", exnum!((2 * 3) + (4 * 5) + (12 % 5)));
+        eval_eq_some!(
+            "(- 100 (% 25 6) (% 10 3))",
+            exnum!(100 - (25 % 6) - (10 % 3))
+        );
+        eval_eq_some!(
+            "(+ (* 2 3) (* 4 5) (% 12 5))",
+            exnum!((2 * 3) + (4 * 5) + (12 % 5))
+        );
         eval_eq_some!("(+ 10 (* 2 (% 15 4)))", exnum!(10 + (2 * (15 % 4))));
         eval_eq_some!("(- (* 9 3) (% 27 3))", exnum!((9 * 3) - (27 % 3)));
-        eval_eq_some!("(+ (* 5 5) (* 4 4) (* 3 3) (* 2 2) (% 20 6))", exnum!((5 * 5) + (4 * 4) + (3 * 3) + (2 * 2) + (20 % 6)));
-        eval_eq_some!("(/ (+ 500 500) (% 1000 3))", exnum!((500 + 500) / (1000 % 3)));
+        eval_eq_some!(
+            "(+ (* 5 5) (* 4 4) (* 3 3) (* 2 2) (% 20 6))",
+            exnum!((5 * 5) + (4 * 4) + (3 * 3) + (2 * 2) + (20 % 6))
+        );
+        eval_eq_some!(
+            "(/ (+ 500 500) (% 1000 3))",
+            exnum!((500 + 500) / (1000 % 3))
+        );
     }
 }
