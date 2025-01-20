@@ -186,13 +186,6 @@ impl<'a> Lexer<'a> {
     }
 }
 
-// TODO
-// macro_rules! lex {
-//     ($s:expr) => {
-//         Lexer::new($s).lex()
-//     };
-// }
-
 fn lex(s: &str) -> Vec<Tok> {
     Lexer::new(s).lex()
 }
@@ -215,6 +208,13 @@ enum BuiltIn {
     Set,
     LessOrEq,
     GreaterOrEq,
+    Cond,
+}
+
+macro_rules! bi {
+    ($b:ident) => {
+        Expr::Constant(Atom::BuiltIn(BuiltIn::$b))
+    };
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -276,23 +276,24 @@ impl Parser {
     fn func_or_literal(&mut self) -> Expr {
         let s = match &self.toks[self.pos] {
             Tok::Ident(i) => match i.as_str() {
-                "display" => Expr::Constant(Atom::BuiltIn(BuiltIn::Display)),
-                "newline" => Expr::Constant(Atom::BuiltIn(BuiltIn::Newline)),
-                "if" => Expr::Constant(Atom::BuiltIn(BuiltIn::If)),
-                "define" => Expr::Constant(Atom::BuiltIn(BuiltIn::Define)),
-                "set!" => Expr::Constant(Atom::BuiltIn(BuiltIn::Set)),
+                "display" => bi!(Display),
+                "newline" => bi!(Newline),
+                "if" => bi!(If),
+                "define" => bi!(Define),
+                "set!" => bi!(Set),
+                "cond" => bi!(Cond),
                 _ => Expr::Ident(i.clone()),
             },
-            Tok::Minus => Expr::Constant(Atom::BuiltIn(BuiltIn::Minus)),
-            Tok::Plus => Expr::Constant(Atom::BuiltIn(BuiltIn::Plus)),
-            Tok::Slash => Expr::Constant(Atom::BuiltIn(BuiltIn::Slash)),
-            Tok::Times => Expr::Constant(Atom::BuiltIn(BuiltIn::Times)),
-            Tok::Eq => Expr::Constant(Atom::BuiltIn(BuiltIn::Eq)),
-            Tok::Percent => Expr::Constant(Atom::BuiltIn(BuiltIn::Modulo)),
-            Tok::Less => Expr::Constant(Atom::BuiltIn(BuiltIn::Less)),
-            Tok::Greater => Expr::Constant(Atom::BuiltIn(BuiltIn::Greater)),
-            Tok::LessOrEq => Expr::Constant(Atom::BuiltIn(BuiltIn::LessOrEq)),
-            Tok::GreaterOrEq => Expr::Constant(Atom::BuiltIn(BuiltIn::GreaterOrEq)),
+            Tok::Minus => bi!(Minus),
+            Tok::Plus => bi!(Plus),
+            Tok::Slash => bi!(Slash),
+            Tok::Times => bi!(Times),
+            Tok::Eq => bi!(Eq),
+            Tok::Percent => bi!(Modulo),
+            Tok::Less => bi!(Less),
+            Tok::Greater => bi!(Greater),
+            Tok::LessOrEq => bi!(LessOrEq),
+            Tok::GreaterOrEq => bi!(GreaterOrEq),
             Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
             Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
             Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
@@ -342,7 +343,6 @@ impl Parser {
                     return Expr::List(list);
                 }
                 "lambda" => {
-                    // println!("func: {:?} args: {:?}", func, args);
                     let mut lambda_arg_names = Vec::new();
                     let first_arg = args.first().unwrap();
                     let Expr::List(names) = first_arg else {
@@ -432,6 +432,7 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::Set => String::from("built_in<Set>"),
                 BuiltIn::LessOrEq => String::from("built_in<LessOrEq>"),
                 BuiltIn::GreaterOrEq => String::from("built_in<GreaterOrEq>"),
+                BuiltIn::Cond => String::from("built_in<Cond>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
             Atom::String(s) => s,
@@ -736,6 +737,27 @@ impl Evaluator {
         self.compare_ints(args, |(a, b)| a >= b)
     }
 
+    #[inline]
+    fn cond(&mut self, args: Vec<Expr>) -> Option<Expr> {
+        for arg in args {
+            match arg {
+                Expr::List(l) => {
+                    assert!(!l.is_empty());
+                    let test = self.eval(l[0].clone()).unwrap();
+                    if self.get_bool_from_expr(test).unwrap() {
+                        let mut res = None;
+                        for action in l[1..].iter() {
+                            res = self.eval(action.clone());
+                        }
+                        return res;
+                    }
+                }
+                _ => panic!("`cond` expects a list got: {arg:?}"),
+            }
+        }
+        None
+    }
+
     fn eval(&mut self, expr: Expr) -> Option<Expr> {
         match expr {
             Expr::Constant(_) | Expr::Lambda(_, _) => Some(expr),
@@ -810,6 +832,7 @@ impl Evaluator {
                         BuiltIn::Greater => self.greater(tail)?,
                         BuiltIn::LessOrEq => self.less_or_eq(tail)?,
                         BuiltIn::GreaterOrEq => self.greater_or_eq(tail)?,
+                        BuiltIn::Cond => return self.cond(tail),
                     },
                     Expr::List(l) => return self.reduce_list(l),
                     Expr::Constant(_) | Expr::Lambda(_, _) => return Some(reduced_head),
@@ -1074,15 +1097,15 @@ mod tests {
         };
     }
 
-    macro_rules! exident {
-        ($i:expr) => {
-            Expr::Ident(String::from($i))
+    macro_rules! exbool {
+        ($b:expr) => {
+            Expr::Constant(Atom::Bool($b))
         };
     }
 
-    macro_rules! bi {
-        ($b:ident) => {
-            Expr::Constant(Atom::BuiltIn(BuiltIn::$b))
+    macro_rules! exident {
+        ($i:expr) => {
+            Expr::Ident(String::from($i))
         };
     }
 
@@ -1154,11 +1177,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_parse_cond() {
+        lex_and_parse_eq!(
+            "(cond ((< 1 2) #t) (#t #f))",
+            list![
+                bi!(Cond),
+                list![list![bi!(Less), exnum!(1), exnum!(2)], exbool!(true)],
+                list![exbool!(true), exbool!(false)]
+            ]
+        );
+    }
+
     macro_rules! eval_eq_some {
         ($c:expr, $ex:expr) => {
             let mut parser = Parser::new(lex($c));
             let mut evaluator = Evaluator::new();
             assert_eq!(evaluator.eval(parser.parse().unwrap()), Some($ex));
+            assert_eq!(parser.parse(), None);
+        };
+    }
+
+    macro_rules! eval_eq_some_many {
+        ($c:expr, $ex:expr) => {
+            let mut parser = Parser::new(lex($c));
+            let mut evaluator = Evaluator::new();
+            for ex in $ex {
+                assert_eq!(evaluator.eval(parser.parse().unwrap()), Some(ex));
+            }
             assert_eq!(parser.parse(), None);
         };
     }
