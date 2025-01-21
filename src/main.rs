@@ -243,7 +243,7 @@ enum Expr {
     Cons(Box<Expr>, Box<Expr>),
     Lambda(Vec<String>, Box<Expr>),
     Do(Vec<DoVariable>, Box<Expr>, Vec<Expr>, Vec<Expr>),
-    Nil,
+    Null,
 }
 
 macro_rules! list {
@@ -286,7 +286,7 @@ impl Parser {
                 "define" => bi!(Define),
                 "set!" => bi!(Set),
                 "cond" => bi!(Cond),
-                "nil" => Expr::Nil,
+                "null" => Expr::Null,
                 "cons" => bi!(Cons),
                 _ => Expr::Ident(i.clone()),
             },
@@ -461,7 +461,7 @@ fn fmt_expr(e: Expr) -> String {
         Expr::Do(_, _, _, _) => String::from("non_printable<Do>"),
         Expr::Quoted(_) => todo!(),
         Expr::Cons(_, _) => todo!(),
-        Expr::Nil => String::from("nil"),
+        Expr::Null => String::from("null"),
     }
 }
 
@@ -645,7 +645,7 @@ impl Evaluator {
         } else if args.len() > 2 {
             self.eval(args[2].clone())
         } else {
-            Expr::Nil
+            Expr::Null
         }
     }
 
@@ -758,7 +758,7 @@ impl Evaluator {
                     assert!(!l.is_empty());
                     let test = self.eval(l[0].clone());
                     if self.get_bool_from_expr(test).unwrap() {
-                        let mut res = Expr::Nil;
+                        let mut res = Expr::Null;
                         for action in l[1..].iter() {
                             res = self.eval(action.clone());
                         }
@@ -768,7 +768,7 @@ impl Evaluator {
                 _ => panic!("`cond` expects a list got: {arg:?}"),
             }
         }
-        Expr::Nil
+        Expr::Null
     }
 
     fn eval(&mut self, expr: Expr) -> Expr {
@@ -797,7 +797,7 @@ impl Evaluator {
                         for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter()) {
                             self.push_to_current_scope(arg_key, arg_val);
                         }
-                        let mut res = Expr::Nil;
+                        let mut res = Expr::Null;
                         if let Expr::List(body) = *body {
                             for expr in body {
                                 res = self.eval(expr);
@@ -818,17 +818,17 @@ impl Evaluator {
                         BuiltIn::Times => self.times(tail),
                         BuiltIn::Display => {
                             self.display(tail);
-                            return Expr::Nil;
+                            return Expr::Null;
                         }
                         BuiltIn::If => return self.if_(tail),
                         BuiltIn::Eq => self.eq(tail),
                         BuiltIn::Define => {
                             self.define(tail);
-                            return Expr::Nil;
+                            return Expr::Null;
                         }
                         BuiltIn::Set => {
                             self.set(tail);
-                            return Expr::Nil;
+                            return Expr::Null;
                         }
                         BuiltIn::List => return Expr::List(self.reduce(tail).unwrap()),
                         BuiltIn::Newline => {
@@ -838,7 +838,7 @@ impl Evaluator {
                                 tail.len()
                             );
                             println!();
-                            return Expr::Nil;
+                            return Expr::Null;
                         }
                         BuiltIn::Modulo => self.modulo(tail),
                         BuiltIn::Less => self.less(tail),
@@ -858,7 +858,7 @@ impl Evaluator {
                 for var in &vars {
                     self.push_to_current_scope(var.ident.clone(), var.init.clone());
                 }
-                let mut res = Expr::Nil;
+                let mut res = Expr::Null;
                 loop {
                     let test_res = self.eval(*test.clone());
                     if self.get_bool_from_expr(test_res).unwrap() {
@@ -882,7 +882,7 @@ impl Evaluator {
             }
             Expr::Quoted(_) => todo!(),
             Expr::Cons(_, _) => todo!(),
-            Expr::Nil => Expr::Nil,
+            Expr::Null => Expr::Null,
         }
     }
 }
@@ -905,7 +905,7 @@ fn repl() {
         while let Some(expr) = parser.parse() {
             // println!("{expr:?}");
             let res = e.eval(expr);
-            if res != Expr::Nil {
+            if res != Expr::Null {
                 println!("{}", fmt_expr(res));
             }
         }
