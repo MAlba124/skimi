@@ -237,9 +237,12 @@ struct DoVariable {
 enum Expr {
     Constant(Atom),
     Ident(String),
+    Quoted(Box<Expr>),
     List(Vec<Expr>),
+    Cons(Box<Expr>, Box<Expr>),
     Lambda(Vec<String>, Box<Expr>),
     Do(Vec<DoVariable>, Box<Expr>, Vec<Expr>, Vec<Expr>),
+    Nil,
 }
 
 macro_rules! list {
@@ -282,6 +285,7 @@ impl Parser {
                 "define" => bi!(Define),
                 "set!" => bi!(Set),
                 "cond" => bi!(Cond),
+                "nil" => Expr::Nil,
                 _ => Expr::Ident(i.clone()),
             },
             Tok::Minus => bi!(Minus),
@@ -452,6 +456,9 @@ fn fmt_expr(e: Expr) -> String {
         }
         Expr::Lambda(_, _) => String::from("non_printable<Lambda>"),
         Expr::Do(_, _, _, _) => String::from("non_printable<Do>"),
+        Expr::Quoted(_) => todo!(),
+        Expr::Cons(_, _) => todo!(),
+        Expr::Nil => String::from("nil"),
     }
 }
 
@@ -533,7 +540,7 @@ impl Evaluator {
     fn reduce(&mut self, exprs: Vec<Expr>) -> Option<Vec<Expr>> {
         let mut reduced = Vec::new();
         for e in exprs {
-            reduced.push(self.eval(e)?);
+            reduced.push(self.eval(e));
         }
         Some(reduced)
     }
@@ -551,89 +558,91 @@ impl Evaluator {
     }
 
     #[inline]
-    fn minus(&mut self, args: Vec<Expr>) -> Option<Atom> {
-        let reduced_args = self.reduce(args)?;
-        Some(Atom::Num(
-            if let Some(first_elem) = reduced_args.first().cloned() {
-                let fe = self.get_num_from_expr(first_elem)?;
-                reduced_args
-                    .into_iter()
-                    .map(|e| self.get_num_from_expr(e))
-                    .collect::<Option<Vec<i64>>>()?
-                    .into_iter()
-                    .skip(1)
-                    .fold(fe, |a, b| a - b)
-            } else {
-                Default::default()
-            },
-        ))
+    fn minus(&mut self, args: Vec<Expr>) -> Atom {
+        let reduced_args = self.reduce(args).unwrap();
+        Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
+            let fe = self.get_num_from_expr(first_elem).unwrap();
+            reduced_args
+                .into_iter()
+                .map(|e| self.get_num_from_expr(e))
+                .collect::<Option<Vec<i64>>>()
+                .unwrap()
+                .into_iter()
+                .skip(1)
+                .fold(fe, |a, b| a - b)
+        } else {
+            Default::default()
+        })
     }
 
     #[inline]
-    fn plus(&mut self, args: Vec<Expr>) -> Option<Atom> {
-        Some(Atom::Num(
-            self.reduce(args)?
+    fn plus(&mut self, args: Vec<Expr>) -> Atom {
+        Atom::Num(
+            self.reduce(args)
+                .unwrap()
                 .into_iter()
                 .map(|e| self.get_num_from_expr(e))
-                .collect::<Option<Vec<i64>>>()?
+                .collect::<Option<Vec<i64>>>()
+                .unwrap()
                 .into_iter()
                 .sum(),
-        ))
+        )
     }
 
     #[inline]
-    fn slash(&mut self, args: Vec<Expr>) -> Option<Atom> {
-        let reduced_args = self.reduce(args)?;
-        Some(Atom::Num(
-            if let Some(first_elem) = reduced_args.first().cloned() {
-                let fe = self.get_num_from_expr(first_elem)?;
-                reduced_args
-                    .into_iter()
-                    .map(|e| self.get_num_from_expr(e))
-                    .collect::<Option<Vec<i64>>>()?
-                    .into_iter()
-                    .skip(1)
-                    .fold(fe, |a, b| a / b)
-            } else {
-                Default::default()
-            },
-        ))
-    }
-
-    #[inline]
-    fn times(&mut self, args: Vec<Expr>) -> Option<Atom> {
-        Some(Atom::Num(
-            self.reduce(args)?
+    fn slash(&mut self, args: Vec<Expr>) -> Atom {
+        let reduced_args = self.reduce(args).unwrap();
+        Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
+            let fe = self.get_num_from_expr(first_elem).unwrap();
+            reduced_args
                 .into_iter()
                 .map(|e| self.get_num_from_expr(e))
-                .collect::<Option<Vec<i64>>>()?
+                .collect::<Option<Vec<i64>>>()
+                .unwrap()
                 .into_iter()
-                .product(),
-        ))
+                .skip(1)
+                .fold(fe, |a, b| a / b)
+        } else {
+            Default::default()
+        })
     }
 
     #[inline]
-    fn eq(&mut self, args: Vec<Expr>) -> Option<Atom> {
-        let reduced_args = self.reduce(args)?;
-        Some(Atom::Bool(
+    fn times(&mut self, args: Vec<Expr>) -> Atom {
+        Atom::Num(
+            self.reduce(args)
+                .unwrap()
+                .into_iter()
+                .map(|e| self.get_num_from_expr(e))
+                .collect::<Option<Vec<i64>>>()
+                .unwrap()
+                .into_iter()
+                .product(),
+        )
+    }
+
+    #[inline]
+    fn eq(&mut self, args: Vec<Expr>) -> Atom {
+        let reduced_args = self.reduce(args).unwrap();
+        Atom::Bool(
             reduced_args
                 .iter()
                 .zip(reduced_args.iter().skip(1))
                 .all(|(a, b)| a == b),
-        ))
+        )
     }
 
     #[inline]
-    fn if_(&mut self, args: Vec<Expr>) -> Option<Expr> {
+    fn if_(&mut self, args: Vec<Expr>) -> Expr {
         let cond = &args[0];
         let true_branch = &args[1];
         let reduced_cond = self.eval(cond.clone());
-        if self.get_bool_from_expr(reduced_cond.unwrap()).unwrap() {
+        if self.get_bool_from_expr(reduced_cond).unwrap() {
             self.eval(true_branch.clone())
         } else if args.len() > 2 {
             self.eval(args[2].clone())
         } else {
-            None
+            Expr::Nil
         }
     }
 
@@ -645,7 +654,7 @@ impl Evaluator {
             args.len()
         );
         let ident = self.get_ident_string(args[0].clone()).unwrap();
-        let reduced_body = self.eval(args[1].clone()).unwrap();
+        let reduced_body = self.eval(args[1].clone());
         self.push_to_current_scope(ident, reduced_body);
     }
 
@@ -657,7 +666,7 @@ impl Evaluator {
             args.len()
         );
         let ident = self.get_ident_string(args[0].clone()).unwrap();
-        let reduced_body = self.eval(args[1].clone()).unwrap();
+        let reduced_body = self.eval(args[1].clone());
         assert!(
             self.has_variable_in_scope(&ident),
             "Attempted to update a variable that is not in scope: {ident}"
@@ -666,31 +675,30 @@ impl Evaluator {
     }
 
     #[inline]
-    fn reduce_list(&mut self, args: Vec<Expr>) -> Option<Expr> {
+    fn reduce_list(&mut self, args: Vec<Expr>) -> Expr {
         let mut reduced = Vec::new();
         for arg in args.into_iter() {
-            reduced.push(self.eval(arg).unwrap());
+            reduced.push(self.eval(arg));
         }
-        Some(Expr::List(reduced))
+        Expr::List(reduced)
     }
 
     #[inline]
-    fn modulo(&mut self, args: Vec<Expr>) -> Option<Atom> {
-        let reduced_args = self.reduce(args)?;
-        Some(Atom::Num(
-            if let Some(first_elem) = reduced_args.first().cloned() {
-                let fe = self.get_num_from_expr(first_elem)?;
-                reduced_args
-                    .into_iter()
-                    .map(|e| self.get_num_from_expr(e))
-                    .collect::<Option<Vec<i64>>>()?
-                    .into_iter()
-                    .skip(1)
-                    .fold(fe, |a, b| a % b)
-            } else {
-                Default::default()
-            },
-        ))
+    fn modulo(&mut self, args: Vec<Expr>) -> Atom {
+        let reduced_args = self.reduce(args).unwrap();
+        Atom::Num(if let Some(first_elem) = reduced_args.first().cloned() {
+            let fe = self.get_num_from_expr(first_elem).unwrap();
+            reduced_args
+                .into_iter()
+                .map(|e| self.get_num_from_expr(e))
+                .collect::<Option<Vec<i64>>>()
+                .unwrap()
+                .into_iter()
+                .skip(1)
+                .fold(fe, |a, b| a % b)
+        } else {
+            Default::default()
+        })
     }
 
     #[inline]
@@ -698,54 +706,56 @@ impl Evaluator {
         &mut self,
         args: Vec<Expr>,
         comparison: impl FnMut((i64, i64)) -> bool,
-    ) -> Option<Atom> {
-        let reduced_args = self.reduce(args)?;
-        Some(Atom::Bool(
+    ) -> Atom {
+        let reduced_args = self.reduce(args).unwrap();
+        Atom::Bool(
             reduced_args
                 .iter()
                 .map(|e| self.get_num_from_expr(e.clone()))
-                .collect::<Option<Vec<i64>>>()?
+                .collect::<Option<Vec<i64>>>()
+                .unwrap()
                 .into_iter()
                 .zip(
                     reduced_args
                         .iter()
                         .skip(1)
                         .map(|e| self.get_num_from_expr(e.clone()))
-                        .collect::<Option<Vec<i64>>>()?,
+                        .collect::<Option<Vec<i64>>>()
+                        .unwrap(),
                 )
                 .all(comparison),
-        ))
+        )
     }
 
     #[inline]
-    fn less(&mut self, args: Vec<Expr>) -> Option<Atom> {
+    fn less(&mut self, args: Vec<Expr>) -> Atom {
         self.compare_ints(args, |(a, b)| a < b)
     }
 
     #[inline]
-    fn greater(&mut self, args: Vec<Expr>) -> Option<Atom> {
+    fn greater(&mut self, args: Vec<Expr>) -> Atom {
         self.compare_ints(args, |(a, b)| a > b)
     }
 
     #[inline]
-    fn less_or_eq(&mut self, args: Vec<Expr>) -> Option<Atom> {
+    fn less_or_eq(&mut self, args: Vec<Expr>) -> Atom {
         self.compare_ints(args, |(a, b)| a <= b)
     }
 
     #[inline]
-    fn greater_or_eq(&mut self, args: Vec<Expr>) -> Option<Atom> {
+    fn greater_or_eq(&mut self, args: Vec<Expr>) -> Atom {
         self.compare_ints(args, |(a, b)| a >= b)
     }
 
     #[inline]
-    fn cond(&mut self, args: Vec<Expr>) -> Option<Expr> {
+    fn cond(&mut self, args: Vec<Expr>) -> Expr {
         for arg in args {
             match arg {
                 Expr::List(l) => {
                     assert!(!l.is_empty());
-                    let test = self.eval(l[0].clone()).unwrap();
+                    let test = self.eval(l[0].clone());
                     if self.get_bool_from_expr(test).unwrap() {
-                        let mut res = None;
+                        let mut res = Expr::Nil;
                         for action in l[1..].iter() {
                             res = self.eval(action.clone());
                         }
@@ -755,18 +765,18 @@ impl Evaluator {
                 _ => panic!("`cond` expects a list got: {arg:?}"),
             }
         }
-        None
+        Expr::Nil
     }
 
-    fn eval(&mut self, expr: Expr) -> Option<Expr> {
+    fn eval(&mut self, expr: Expr) -> Expr {
         match expr {
-            Expr::Constant(_) | Expr::Lambda(_, _) => Some(expr),
+            Expr::Constant(_) | Expr::Lambda(_, _) => expr,
             Expr::Ident(i) => match self.get_variable(&i) {
-                Some(e) => Some(e),
+                Some(e) => e,
                 None => panic!("Variable `{i}` does not exist"),
             },
             Expr::List(l) => {
-                let head = l.first()?.clone();
+                let head = l.first().unwrap().clone();
                 let tail = l.into_iter().skip(1).collect::<Vec<Expr>>();
                 if let Expr::Ident(i) = head.clone() {
                     let Some(func) = self.get_variable(&i) else {
@@ -784,7 +794,7 @@ impl Evaluator {
                         for (arg_key, arg_val) in arglist.into_iter().zip(args.into_iter()) {
                             self.push_to_current_scope(arg_key, arg_val);
                         }
-                        let mut res = None;
+                        let mut res = Expr::Nil;
                         if let Expr::List(body) = *body {
                             for expr in body {
                                 res = self.eval(expr);
@@ -796,28 +806,28 @@ impl Evaluator {
                         return res;
                     }
                 }
-                let reduced_head = self.eval(head)?;
-                Some(Expr::Constant(match reduced_head {
+                let reduced_head = self.eval(head);
+                Expr::Constant(match reduced_head {
                     Expr::Constant(Atom::BuiltIn(bi)) => match bi {
-                        BuiltIn::Minus => self.minus(tail)?,
-                        BuiltIn::Plus => self.plus(tail)?,
-                        BuiltIn::Slash => self.slash(tail)?,
-                        BuiltIn::Times => self.times(tail)?,
+                        BuiltIn::Minus => self.minus(tail),
+                        BuiltIn::Plus => self.plus(tail),
+                        BuiltIn::Slash => self.slash(tail),
+                        BuiltIn::Times => self.times(tail),
                         BuiltIn::Display => {
                             self.display(tail);
-                            return None;
+                            return Expr::Nil;
                         }
                         BuiltIn::If => return self.if_(tail),
-                        BuiltIn::Eq => self.eq(tail)?,
+                        BuiltIn::Eq => self.eq(tail),
                         BuiltIn::Define => {
                             self.define(tail);
-                            return None;
+                            return Expr::Nil;
                         }
                         BuiltIn::Set => {
                             self.set(tail);
-                            return None;
+                            return Expr::Nil;
                         }
-                        BuiltIn::List => return Some(Expr::List(self.reduce(tail).unwrap())),
+                        BuiltIn::List => return Expr::List(self.reduce(tail).unwrap()),
                         BuiltIn::Newline => {
                             assert!(
                                 tail.is_empty(),
@@ -825,28 +835,28 @@ impl Evaluator {
                                 tail.len()
                             );
                             println!();
-                            return None;
+                            return Expr::Nil;
                         }
-                        BuiltIn::Modulo => self.modulo(tail)?,
-                        BuiltIn::Less => self.less(tail)?,
-                        BuiltIn::Greater => self.greater(tail)?,
-                        BuiltIn::LessOrEq => self.less_or_eq(tail)?,
-                        BuiltIn::GreaterOrEq => self.greater_or_eq(tail)?,
+                        BuiltIn::Modulo => self.modulo(tail),
+                        BuiltIn::Less => self.less(tail),
+                        BuiltIn::Greater => self.greater(tail),
+                        BuiltIn::LessOrEq => self.less_or_eq(tail),
+                        BuiltIn::GreaterOrEq => self.greater_or_eq(tail),
                         BuiltIn::Cond => return self.cond(tail),
                     },
                     Expr::List(l) => return self.reduce_list(l),
-                    Expr::Constant(_) | Expr::Lambda(_, _) => return Some(reduced_head),
+                    Expr::Constant(_) | Expr::Lambda(_, _) => return reduced_head,
                     _ => todo!(),
-                }))
+                })
             }
             Expr::Do(vars, test, after_test_exprs, commands) => {
                 self.push_new_scope();
                 for var in &vars {
                     self.push_to_current_scope(var.ident.clone(), var.init.clone());
                 }
-                let mut res = None;
+                let mut res = Expr::Nil;
                 loop {
-                    let test_res = self.eval(*test.clone()).unwrap();
+                    let test_res = self.eval(*test.clone());
                     if self.get_bool_from_expr(test_res).unwrap() {
                         for after_test_expr in after_test_exprs {
                             res = self.eval(after_test_expr);
@@ -859,13 +869,16 @@ impl Evaluator {
                     }
 
                     for var in &vars {
-                        let new_val = self.eval(var.step.clone()).unwrap();
+                        let new_val = self.eval(var.step.clone());
                         self.push_to_current_scope(var.ident.clone(), new_val);
                     }
                 }
                 self.pop_scope();
                 res
             }
+            Expr::Quoted(_) => todo!(),
+            Expr::Cons(_, _) => todo!(),
+            Expr::Nil => Expr::Nil,
         }
     }
 }
@@ -887,9 +900,7 @@ fn repl() {
         let mut parser = Parser::new(toks);
         while let Some(expr) = parser.parse() {
             // println!("{expr:?}");
-            if let Some(res) = e.eval(expr) {
-                println!("{}", fmt_expr(res));
-            }
+            println!("{}", fmt_expr(e.eval(expr)));
         }
     }
 }
@@ -1193,7 +1204,7 @@ mod tests {
         ($c:expr, $ex:expr) => {
             let mut parser = Parser::new(lex($c));
             let mut evaluator = Evaluator::new();
-            assert_eq!(evaluator.eval(parser.parse().unwrap()), Some($ex));
+            assert_eq!(evaluator.eval(parser.parse().unwrap()), $ex);
             assert_eq!(parser.parse(), None);
         };
     }
