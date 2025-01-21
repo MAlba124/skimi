@@ -209,11 +209,12 @@ enum BuiltIn {
     LessOrEq,
     GreaterOrEq,
     Cond,
+    Cons,
 }
 
 macro_rules! bi {
     ($b:ident) => {
-        Expr::Constant(Atom::BuiltIn(BuiltIn::$b))
+        Expr::Atom(Atom::BuiltIn(BuiltIn::$b))
     };
 }
 
@@ -235,7 +236,7 @@ struct DoVariable {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Expr {
-    Constant(Atom),
+    Atom(Atom),
     Ident(String),
     Quoted(Box<Expr>),
     List(Vec<Expr>),
@@ -286,6 +287,7 @@ impl Parser {
                 "set!" => bi!(Set),
                 "cond" => bi!(Cond),
                 "nil" => Expr::Nil,
+                "cons" => bi!(Cons),
                 _ => Expr::Ident(i.clone()),
             },
             Tok::Minus => bi!(Minus),
@@ -298,10 +300,10 @@ impl Parser {
             Tok::Greater => bi!(Greater),
             Tok::LessOrEq => bi!(LessOrEq),
             Tok::GreaterOrEq => bi!(GreaterOrEq),
-            Tok::Num(n) => Expr::Constant(Atom::Num(*n)),
-            Tok::Bool(b) => Expr::Constant(Atom::Bool(*b)),
-            Tok::String(s) => Expr::Constant(Atom::String(s.clone())),
-            Tok::Char(c) => Expr::Constant(Atom::Char(*c)),
+            Tok::Num(n) => Expr::Atom(Atom::Num(*n)),
+            Tok::Bool(b) => Expr::Atom(Atom::Bool(*b)),
+            Tok::String(s) => Expr::Atom(Atom::String(s.clone())),
+            Tok::Char(c) => Expr::Atom(Atom::Char(*c)),
             _ => panic!("Expected symbol got: {:?}", &self.toks[self.pos]),
         };
         self.pos += 1;
@@ -342,7 +344,7 @@ impl Parser {
         if let Expr::Ident(ref i) = func {
             match i.as_str() {
                 "list" => {
-                    let mut list = vec![Expr::Constant(Atom::BuiltIn(BuiltIn::List))];
+                    let mut list = vec![Expr::Atom(Atom::BuiltIn(BuiltIn::List))];
                     list.extend_from_slice(&args);
                     return Expr::List(list);
                 }
@@ -417,7 +419,7 @@ impl Parser {
 
 fn fmt_expr(e: Expr) -> String {
     match e {
-        Expr::Constant(c) => match c {
+        Expr::Atom(c) => match c {
             Atom::Num(n) => n.to_string(),
             Atom::BuiltIn(bi) => match bi {
                 BuiltIn::Minus => String::from("built_in<Minus>"),
@@ -437,6 +439,7 @@ fn fmt_expr(e: Expr) -> String {
                 BuiltIn::LessOrEq => String::from("built_in<LessOrEq>"),
                 BuiltIn::GreaterOrEq => String::from("built_in<GreaterOrEq>"),
                 BuiltIn::Cond => String::from("built_in<Cond>"),
+                BuiltIn::Cons => String::from("built_in<Cons>"),
             },
             Atom::Bool(b) => String::from(if b { "#t" } else { "#f" }),
             Atom::String(s) => s,
@@ -512,7 +515,7 @@ impl Evaluator {
     #[inline]
     fn get_num_from_expr(&self, e: Expr) -> Option<i64> {
         match e {
-            Expr::Constant(Atom::Num(n)) => Some(n),
+            Expr::Atom(Atom::Num(n)) => Some(n),
             Expr::Ident(i) => self.get_num_from_expr(self.get_variable(&i)?),
             _ => None,
         }
@@ -521,7 +524,7 @@ impl Evaluator {
     #[inline]
     fn get_bool_from_expr(&self, e: Expr) -> Option<bool> {
         match e {
-            Expr::Constant(Atom::Bool(b)) => Some(b),
+            Expr::Atom(Atom::Bool(b)) => Some(b),
             Expr::Ident(i) => self.get_bool_from_expr(self.get_variable(&i)?),
             _ => None,
         }
@@ -770,7 +773,7 @@ impl Evaluator {
 
     fn eval(&mut self, expr: Expr) -> Expr {
         match expr {
-            Expr::Constant(_) | Expr::Lambda(_, _) => expr,
+            Expr::Atom(_) | Expr::Lambda(_, _) => expr,
             Expr::Ident(i) => match self.get_variable(&i) {
                 Some(e) => e,
                 None => panic!("Variable `{i}` does not exist"),
@@ -807,8 +810,8 @@ impl Evaluator {
                     }
                 }
                 let reduced_head = self.eval(head);
-                Expr::Constant(match reduced_head {
-                    Expr::Constant(Atom::BuiltIn(bi)) => match bi {
+                Expr::Atom(match reduced_head {
+                    Expr::Atom(Atom::BuiltIn(bi)) => match bi {
                         BuiltIn::Minus => self.minus(tail),
                         BuiltIn::Plus => self.plus(tail),
                         BuiltIn::Slash => self.slash(tail),
@@ -843,9 +846,10 @@ impl Evaluator {
                         BuiltIn::LessOrEq => self.less_or_eq(tail),
                         BuiltIn::GreaterOrEq => self.greater_or_eq(tail),
                         BuiltIn::Cond => return self.cond(tail),
+                        BuiltIn::Cons => todo!(),
                     },
                     Expr::List(l) => return self.reduce_list(l),
-                    Expr::Constant(_) | Expr::Lambda(_, _) => return reduced_head,
+                    Expr::Atom(_) | Expr::Lambda(_, _) => return reduced_head,
                     _ => todo!(),
                 })
             }
@@ -900,7 +904,10 @@ fn repl() {
         let mut parser = Parser::new(toks);
         while let Some(expr) = parser.parse() {
             // println!("{expr:?}");
-            println!("{}", fmt_expr(e.eval(expr)));
+            let res = e.eval(expr);
+            if res != Expr::Nil {
+                println!("{}", fmt_expr(res));
+            }
         }
     }
 }
@@ -1098,19 +1105,19 @@ mod tests {
 
     macro_rules! exnum {
         ($n:expr) => {
-            Expr::Constant(Atom::Num($n))
+            Expr::Atom(Atom::Num($n))
         };
     }
 
     macro_rules! exstr {
         ($s:expr) => {
-            Expr::Constant(Atom::String(String::from($s)))
+            Expr::Atom(Atom::String(String::from($s)))
         };
     }
 
     macro_rules! exbool {
         ($b:expr) => {
-            Expr::Constant(Atom::Bool($b))
+            Expr::Atom(Atom::Bool($b))
         };
     }
 
