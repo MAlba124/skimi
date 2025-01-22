@@ -407,13 +407,16 @@ impl Parser {
         }
 
         let mut list = Expr::Cons(
-            Box::new(args.first().unwrap().clone()),
+            Box::new(args.last().unwrap().clone()),
             Box::new(Expr::Null),
         );
-        for e in args.into_iter().skip(1).rev() {
+        // println!("args={args:?}");
+        for e in args.into_iter().rev().skip(1) {
+            // println!("e={e:?}");
             list = Expr::Cons(Box::new(e), Box::new(list));
         }
         list = Expr::Cons(Box::new(func), Box::new(list));
+        // println!("list={list:?}");
         // let mut list = vec![func];
         // list.extend_from_slice(&args);
         // list
@@ -784,6 +787,7 @@ impl Evaluator {
 
     #[inline]
     fn cons_to_vec(&self, cons: Expr) -> Vec<Expr> {
+        println!("cons={cons:?}");
         let mut v = Vec::new();
         let mut car = cons;
         loop {
@@ -804,6 +808,7 @@ impl Evaluator {
                 Expr::Null => break,
             }
         }
+        println!("v={v:?}");
         v
     }
 
