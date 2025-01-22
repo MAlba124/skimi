@@ -344,9 +344,11 @@ impl Parser {
         if let Expr::Ident(ref i) = func {
             match i.as_str() {
                 "list" => {
-                    let mut list = vec![Expr::Atom(Atom::BuiltIn(BuiltIn::List))];
-                    list.extend_from_slice(&args);
-                    return Expr::List(list);
+                    let mut head = Expr::Cons(Box::new(Expr::Null), Box::new(Expr::Null));
+                    for car in args.into_iter().rev() {
+                        head = Expr::Cons(Box::new(car), Box::new(head));
+                    }
+                    return head;
                 }
                 "lambda" => {
                     let mut lambda_arg_names = Vec::new();
@@ -404,9 +406,18 @@ impl Parser {
             }
         }
 
-        let mut list = vec![func];
-        list.extend_from_slice(&args);
-        Expr::List(list)
+        let mut list = Expr::Cons(
+            Box::new(args.first().unwrap().clone()),
+            Box::new(Expr::Null),
+        );
+        for e in args.into_iter().skip(1).rev() {
+            list = Expr::Cons(Box::new(e), Box::new(list));
+        }
+        list = Expr::Cons(Box::new(func), Box::new(list));
+        // let mut list = vec![func];
+        // list.extend_from_slice(&args);
+        // list
+        list
     }
 
     pub fn parse(&mut self) -> Option<Expr> {
@@ -460,7 +471,7 @@ fn fmt_expr(e: Expr) -> String {
         Expr::Lambda(_, _) => String::from("non_printable<Lambda>"),
         Expr::Do(_, _, _, _) => String::from("non_printable<Do>"),
         Expr::Quoted(_) => todo!(),
-        Expr::Cons(_, _) => todo!(),
+        Expr::Cons(_, _) => format!("{e:?}"),
         Expr::Null => String::from("null"),
     }
 }
@@ -771,6 +782,31 @@ impl Evaluator {
         Expr::Null
     }
 
+    #[inline]
+    fn cons_to_vec(&self, cons: Expr) -> Vec<Expr> {
+        let mut v = Vec::new();
+        let mut car = cons;
+        loop {
+            match car {
+                Expr::Atom(_)
+                | Expr::Ident(_)
+                | Expr::Quoted(_)
+                | Expr::Lambda(_, _)
+                | Expr::Do(_, _, _, _) => {
+                    v.push(car);
+                    break;
+                }
+                Expr::List(_) => todo!(),
+                Expr::Cons(c, cdr) => {
+                    v.push(*c);
+                    car = *cdr;
+                }
+                Expr::Null => break,
+            }
+        }
+        v
+    }
+
     fn eval(&mut self, expr: Expr) -> Expr {
         match expr {
             Expr::Atom(_) | Expr::Lambda(_, _) => expr,
@@ -881,7 +917,44 @@ impl Evaluator {
                 res
             }
             Expr::Quoted(_) => todo!(),
-            Expr::Cons(_, _) => todo!(),
+            Expr::Cons(car, cdr) => match self.eval(*car.clone()) {
+                Expr::Atom(Atom::BuiltIn(bi)) => match bi {
+                    BuiltIn::Minus => return Expr::Atom(self.minus(self.cons_to_vec(*cdr))),
+                    BuiltIn::Plus => return Expr::Atom(self.plus(self.cons_to_vec(*cdr))),
+                    BuiltIn::Display => {
+                        self.display(self.cons_to_vec(*cdr));
+                        return Expr::Null;
+                    }
+                    BuiltIn::Newline => {
+                        println!();
+                        return Expr::Null;
+                    }
+                    BuiltIn::Slash => return Expr::Atom(self.slash(self.cons_to_vec(*cdr))),
+                    BuiltIn::Times => return Expr::Atom(self.times(self.cons_to_vec(*cdr))),
+                    BuiltIn::If => return self.if_(self.cons_to_vec(*cdr)),
+                    BuiltIn::Eq => return Expr::Atom(self.eq(self.cons_to_vec(*cdr))),
+                    BuiltIn::Define => todo!(),
+                    BuiltIn::List => todo!(),
+                    BuiltIn::Modulo => return Expr::Atom(self.modulo(self.cons_to_vec(*cdr))),
+                    BuiltIn::Less => return Expr::Atom(self.less(self.cons_to_vec(*cdr))),
+                    BuiltIn::Greater => return Expr::Atom(self.greater(self.cons_to_vec(*cdr))),
+                    BuiltIn::Set => todo!(),
+                    BuiltIn::LessOrEq => return Expr::Atom(self.less_or_eq(self.cons_to_vec(*cdr))),
+                    BuiltIn::GreaterOrEq => return Expr::Atom(self.greater_or_eq(self.cons_to_vec(*cdr))),
+                    BuiltIn::Cond => todo!(),
+                    BuiltIn::Cons => match *cdr {
+                        Expr::Cons(_, _) => return *cdr,
+                        _ => panic!("Expected a cons cell, got: {cdr:?}"),
+                    },
+                },
+                Expr::Ident(_) => todo!(),
+                Expr::Quoted(_) => todo!(),
+                Expr::List(_) => todo!(),
+                Expr::Cons(_, _) => todo!(),
+                Expr::Lambda(_, _) => todo!(),
+                Expr::Do(_, _, _, _) => todo!(),
+                _ => panic!("Expected a function, got: {:?}", *car),
+            },
             Expr::Null => Expr::Null,
         }
     }
