@@ -248,10 +248,19 @@ enum Expr {
 
 macro_rules! list {
     ($(),+) => {
-        Expr::List(vec![])
+        Expr::Cons(Box::new(Expr::Null), Box::new(Expr::Null))
+        // Expr::List(vec![])
     };
     ($($exprs:expr),+) => {
-        Expr::List(vec![$($exprs),+])
+        // TODO: use idiomatic macro bullshit
+        {
+            let elems = vec![$($exprs),+];
+            let mut l = Expr::Cons(Box::new(elems.last().unwrap().clone()), Box::new(Expr::Null));
+            for e in elems.iter().rev().skip(1) {
+                l = Expr::Cons(Box::new(e.clone()), Box::new(l));
+            }
+            l
+        }
     };
 }
 
