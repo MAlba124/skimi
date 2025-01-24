@@ -2,13 +2,13 @@ use std::error::Error;
 
 use crate::scanner::{ScanError, Scanner, Token};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BuiltIn {
     Plus,
     Minus,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Atom {
     Num(i64),
     Ident(String),
@@ -16,7 +16,7 @@ pub enum Atom {
     BuiltIn(BuiltIn),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     Atom(Atom),
     Cons(Box<Expr>, Box<Expr>),
@@ -169,14 +169,8 @@ mod tests {
     #[test]
     fn atom() {
         parse!("123", vec![num!(123)]);
-        parse!(
-            "some-ident",
-            vec![ident!("some-ident")]
-        );
-        parse!(
-            "\"some string\"",
-            vec![string!("some string")]
-        );
+        parse!("some-ident", vec![ident!("some-ident")]);
+        parse!("\"some string\"", vec![string!("some string")]);
         parse!("-", vec![Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))]);
         parse!("+", vec![Expr::Atom(Atom::BuiltIn(BuiltIn::Plus))]);
     }
@@ -184,22 +178,10 @@ mod tests {
     #[test]
     fn list() {
         parse!("()", vec![Expr::Null]);
-        parse!(
-            "(123)",
-            vec![list![num!(123)]]
-        );
-        parse!(
-            "(123 456)",
-            vec![list![num!(123), num!(456)]]
-        );
-        parse!(
-            "(\"string\")",
-            vec![list![string!("string")]]
-        );
-        parse!(
-            "(ident)",
-            vec![list![ident!("ident")]]
-        );
+        parse!("(123)", vec![list![num!(123)]]);
+        parse!("(123 456)", vec![list![num!(123), num!(456)]]);
+        parse!("(\"string\")", vec![list![string!("string")]]);
+        parse!("(ident)", vec![list![ident!("ident")]]);
     }
 
     #[test]
@@ -207,7 +189,16 @@ mod tests {
         parse!("(())", vec![list![Expr::Null]]);
         parse!("(()())", vec![list![Expr::Null, Expr::Null]]);
         parse!("(()(123))", vec![list![Expr::Null, list![num!(123)]]]);
-        parse!("(()(123 num-and-ident))", vec![list![Expr::Null, list![num!(123), ident!("num-and-ident")]]]);
-        parse!("(()(123 \"num and string\"))", vec![list![Expr::Null, list![num!(123), string!("num and string")]]]);
+        parse!(
+            "(()(123 num-and-ident))",
+            vec![list![Expr::Null, list![num!(123), ident!("num-and-ident")]]]
+        );
+        parse!(
+            "(()(123 \"num and string\"))",
+            vec![list![
+                Expr::Null,
+                list![num!(123), string!("num and string")]
+            ]]
+        );
     }
 }

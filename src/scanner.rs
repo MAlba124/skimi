@@ -307,10 +307,7 @@ mod tests {
 
     #[test]
     fn combined() {
-        scan_eq_vec!(
-            "(ident)",
-            vec![Token::OPar, ident!("ident"), Token::CPar]
-        );
+        scan_eq_vec!("(ident)", vec![Token::OPar, ident!("ident"), Token::CPar]);
         scan_eq_vec!(
             "(\"string\")",
             vec![Token::OPar, string!("string"), Token::CPar]
