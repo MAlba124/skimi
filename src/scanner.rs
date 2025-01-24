@@ -1,6 +1,6 @@
 use std::error::Error;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     Num(i64),
     OPar,
@@ -12,27 +12,28 @@ pub enum Token {
 }
 
 #[derive(Debug)]
-pub enum ScannerError {
+pub enum ScanError {
     Eof,
     NumConversion,
     InvalidNumChar(char),
     InvalidIdentChar(char),
     InvalidToken,
+    PeekNotFlushed,
 }
 
-impl ScannerError {
+impl ScanError {
     pub fn is_eof(&self) -> bool {
         matches!(self, Self::Eof)
     }
 }
 
-impl std::fmt::Display for ScannerError {
+impl std::fmt::Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
 }
 
-impl Error for ScannerError {
+impl Error for ScanError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
@@ -41,52 +42,57 @@ impl Error for ScannerError {
 pub struct Scanner<'a> {
     chars: &'a [char],
     pos: usize,
+    scanned: Option<Token>,
 }
 
 impl<'a> Scanner<'a> {
     pub fn new(chars: &'a [char]) -> Self {
-        Self { chars, pos: 0 }
+        Self {
+            chars,
+            pos: 0,
+            scanned: None,
+        }
     }
 
     fn is_at_eof(&self) -> bool {
         self.pos >= self.chars.len()
     }
 
-    fn peek(&self) -> Result<char, ScannerError> {
+    fn peek(&self) -> Result<char, ScanError> {
         if !self.is_at_eof() {
             Ok(self.chars[self.pos])
         } else {
-            Err(ScannerError::Eof)
+            Err(ScanError::Eof)
         }
     }
 
-    fn peek2(&self) -> Result<char, ScannerError> {
+    fn peek2(&self) -> Result<char, ScanError> {
         if self.pos + 1 < self.chars.len() {
             Ok(self.chars[self.pos + 1])
         } else {
-            Err(ScannerError::Eof)
+            Err(ScanError::Eof)
         }
     }
 
-    fn next(&mut self) -> Result<char, ScannerError> {
+    fn next(&mut self) -> Result<char, ScanError> {
         if !self.is_at_eof() {
             self.pos += 1;
             Ok(self.chars[self.pos - 1])
         } else {
-            Err(ScannerError::Eof)
+            Err(ScanError::Eof)
         }
     }
 
-    fn take_identifier(&mut self) -> Result<Option<Token>, ScannerError> {
+    fn take_identifier(&mut self) -> Result<Token, ScanError> {
         let mut ident = String::from(self.next()?);
-        while let Ok(next) = self.next() {
+        while let Ok(next) = self.peek() {
             match next {
                 ' ' | '\n' | '(' | ')' => break,
-                'a'..='z' | 'A'..='Z' | '-' | '0'..='9' | '!' => ident.push(next),
-                _ => return Err(ScannerError::InvalidIdentChar(next)),
+                'a'..='z' | 'A'..='Z' | '-' | '0'..='9' | '!' => ident.push(self.next()?),
+                _ => return Err(ScanError::InvalidIdentChar(next)),
             }
         }
-        Ok(Some(Token::Ident(ident)))
+        Ok(Token::Ident(ident))
     }
 
     fn handle_comment(&mut self) {
@@ -97,24 +103,24 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn take_number(&mut self) -> Result<Option<Token>, ScannerError> {
+    fn take_number(&mut self) -> Result<Token, ScanError> {
         let mut num_str = String::from(self.next()?);
-        while let Ok(next) = self.next() {
+        while let Ok(next) = self.peek() {
             match next {
                 ' ' | '\n' | '(' | ')' => break,
-                '0'..='9' => num_str.push(next),
-                _ => return Err(ScannerError::InvalidNumChar(next)),
+                '0'..='9' => num_str.push(self.next()?),
+                _ => return Err(ScanError::InvalidNumChar(next)),
             }
         }
-        Ok(Some(Token::Num(
+        Ok(Token::Num(
             num_str
                 .parse::<i64>()
-                .map_err(|_| ScannerError::NumConversion)?,
-        )))
+                .map_err(|_| ScanError::NumConversion)?,
+        ))
     }
 
     // TODO: handle escaped characters
-    fn take_string(&mut self) -> Result<Option<Token>, ScannerError> {
+    fn take_string(&mut self) -> Result<Token, ScanError> {
         let _ = self.next()?;
         let mut res = String::new();
         while let Ok(next) = self.next() {
@@ -123,60 +129,76 @@ impl<'a> Scanner<'a> {
                 _ => res.push(next),
             }
         }
-        Ok(Some(Token::String(res)))
+        Ok(Token::String(res))
     }
 
-    fn take_minus(&mut self) -> Result<Option<Token>, ScannerError> {
+    fn take_minus(&mut self) -> Result<Token, ScanError> {
         let Ok(peek) = self.peek2() else {
             self.pos += 1;
-            return Ok(Some(Token::Minus));
+            return Ok(Token::Minus);
         };
         if peek.is_ascii_digit() {
             self.take_number()
         } else if matches!(peek, '\n' | ' ' | '(' | ')') {
             self.pos += 1;
-            Ok(Some(Token::Minus))
+            Ok(Token::Minus)
         } else {
-            Err(ScannerError::InvalidToken)
+            Err(ScanError::InvalidToken)
         }
     }
 
-    fn take_plus(&mut self) -> Result<Option<Token>, ScannerError> {
+    fn take_plus(&mut self) -> Result<Token, ScanError> {
         let Ok(peek) = self.peek2() else {
             self.pos += 1;
-            return Ok(Some(Token::Plus));
+            return Ok(Token::Plus);
         };
         if !matches!(peek, ' ' | '\n' | '(' | ')') {
-            return Err(ScannerError::InvalidToken);
+            return Err(ScanError::InvalidToken);
         }
         self.pos += 1;
-        Ok(Some(Token::Plus))
+        Ok(Token::Plus)
     }
 
-    pub fn next_token(&mut self) -> Result<Option<Token>, ScannerError> {
-        match self.peek()? {
-            '\n' | ' ' => {
-                self.pos += 1;
-                Ok(None)
-            }
-            '(' => {
-                self.pos += 1;
-                Ok(Some(Token::OPar))
-            }
-            ')' => {
-                self.pos += 1;
-                Ok(Some(Token::CPar))
-            }
-            ';' => {
-                self.handle_comment();
-                Ok(None)
-            }
-            '0'..='9' => self.take_number(),
-            'a'..='z' | 'A'..='Z' => self.take_identifier(),
-            '-' => self.take_minus(),
-            '+' => self.take_plus(),
-            '"' => self.take_string(),
-            _ => Err(ScannerError::Eof),
+    pub fn next_token(&mut self) -> Result<Token, ScanError> {
+        if let Some(scanned_next) = self.scanned.take() {
+            return Ok(scanned_next);
+        }
+
+        loop {
+            return match self.peek()? {
+                '\n' | ' ' => {
+                    self.pos += 1;
+                    continue;
+                }
+                '(' => {
+                    self.pos += 1;
+                    Ok(Token::OPar)
+                }
+                ')' => {
+                    self.pos += 1;
+                    Ok(Token::CPar)
+                }
+                ';' => {
+                    self.handle_comment();
+                    continue;
+                }
+                '0'..='9' => self.take_number(),
+                'a'..='z' | 'A'..='Z' => self.take_identifier(),
+                '-' => self.take_minus(),
+                '+' => self.take_plus(),
+                '"' => self.take_string(),
+                _ => Err(ScanError::Eof),
+            };
+        }
+    }
+
+    pub fn peek_token(&mut self) -> Result<Token, ScanError> {
+        if let Some(scanned) = &self.scanned {
+            Ok(scanned.clone())
+        } else {
+            let next = self.next_token()?;
+            self.scanned = Some(next.clone());
+            Ok(next)
         }
     }
 }
@@ -210,9 +232,7 @@ mod tests {
             let mut scanner = Scanner::new(&temp);
             let mut res = Vec::new();
             while let Ok(r) = scanner.next_token() {
-                if let Some(r) = r {
-                    res.push(r);
-                }
+                res.push(r);
             }
             assert_eq!($ex, res);
         };
@@ -244,12 +264,18 @@ mod tests {
         scan_eq_vec!("12345", vec![Token::Num(12345)]);
         scan_eq_vec!("12345 67890", vec![Token::Num(12345), Token::Num(67890)]);
         scan_eq_vec!("-12345", vec![Token::Num(-12345)]);
-        scan_eq_vec!("-12345 -67890", vec![Token::Num(-12345), Token::Num(-67890)]);
+        scan_eq_vec!(
+            "-12345 -67890",
+            vec![Token::Num(-12345), Token::Num(-67890)]
+        );
     }
 
     #[test]
     fn ident() {
-        scan_eq_vec!("this-is-an-identifier", vec![ident!("this-is-an-identifier")]);
+        scan_eq_vec!(
+            "this-is-an-identifier",
+            vec![ident!("this-is-an-identifier")]
+        );
         scan_eq_vec!("with!-123", vec![ident!("with!-123")]);
         scan_eq_vec!("something   ", vec![ident!("something")]);
         scan_eq_vec!("\n\nsomething\n\n", vec![ident!("something")]);
@@ -271,8 +297,54 @@ mod tests {
 
     #[test]
     fn string() {
-        scan_eq_vec!("\"this is a string literal\"", vec![string!("this is a string literal")]);
+        scan_eq_vec!(
+            "\"this is a string literal\"",
+            vec![string!("this is a string literal")]
+        );
         scan_eq_vec!("   \"str\"   ", vec![string!("str")]);
         scan_eq_vec!("\n\n\"str\"\n\n", vec![string!("str")]);
+    }
+
+    #[test]
+    fn combined() {
+        scan_eq_vec!(
+            "(ident)",
+            vec![Token::OPar, ident!("ident"), Token::CPar]
+        );
+        scan_eq_vec!(
+            "(\"string\")",
+            vec![Token::OPar, string!("string"), Token::CPar]
+        );
+    }
+
+    #[test]
+    fn peek() {
+        {
+            let in_ = "+".chars().collect::<Vec<char>>();
+            let mut scanner = Scanner::new(&in_);
+            assert_eq!(scanner.peek_token().unwrap(), Token::Plus);
+            assert_eq!(scanner.next_token().unwrap(), Token::Plus);
+        }
+        {
+            let in_ = "+ 123".chars().collect::<Vec<char>>();
+            let mut scanner = Scanner::new(&in_);
+            assert_eq!(scanner.peek_token().unwrap(), Token::Plus);
+            assert_eq!(scanner.next_token().unwrap(), Token::Plus);
+
+            assert_eq!(scanner.peek_token().unwrap(), Token::Num(123));
+            assert_eq!(scanner.next_token().unwrap(), Token::Num(123));
+        }
+
+        {
+            let in_ = "+ 123 (".chars().collect::<Vec<char>>();
+            let mut scanner = Scanner::new(&in_);
+            assert_eq!(scanner.peek_token().unwrap(), Token::Plus);
+            assert_eq!(scanner.next_token().unwrap(), Token::Plus);
+
+            assert_eq!(scanner.peek_token().unwrap(), Token::Num(123));
+            assert_eq!(scanner.next_token().unwrap(), Token::Num(123));
+
+            assert_eq!(scanner.next_token().unwrap(), Token::OPar);
+        }
     }
 }
