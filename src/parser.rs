@@ -6,6 +6,7 @@ use crate::scanner::{ScanError, Scanner, Token};
 pub enum BuiltIn {
     Plus,
     Minus,
+    Define,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,7 +62,7 @@ pub struct Parser<'a> {
 /// <number>  ::= '-'?[0-9]+
 /// <ident>   ::= [a-zA-Z][a-zA-Z0-9-]*
 /// <string>  ::= '"' char '"'
-/// <builtin> ::= '+' | '-'
+/// <builtin> ::= '+' | '-' | 'define'
 /// <list>    ::= '(' <expr>* ')'
 impl<'a> Parser<'a> {
     pub fn new(src: &'a [char]) -> Parser<'a> {
@@ -82,7 +83,10 @@ impl<'a> Parser<'a> {
         let next = self.scanner.next_token()?;
         match next {
             Token::Num(n) => Ok(Expr::Atom(Atom::Num(n))),
-            Token::Ident(i) => Ok(Expr::Atom(Atom::Ident(i))),
+            Token::Ident(i) => match i.as_str() {
+                "define" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Define))),
+                _ => Ok(Expr::Atom(Atom::Ident(i))),
+            },
             Token::Minus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))),
             Token::Plus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Plus))),
             Token::String(s) => Ok(Expr::Atom(Atom::String(s))),
@@ -166,13 +170,20 @@ mod tests {
         };
     }
 
+    macro_rules! bi {
+        ($v:ident) => {
+            Expr::Atom(Atom::BuiltIn(BuiltIn::$v))
+        };
+    }
+
     #[test]
     fn atom() {
         parse!("123", vec![num!(123)]);
         parse!("some-ident", vec![ident!("some-ident")]);
         parse!("\"some string\"", vec![string!("some string")]);
-        parse!("-", vec![Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))]);
-        parse!("+", vec![Expr::Atom(Atom::BuiltIn(BuiltIn::Plus))]);
+        parse!("-", vec![bi!(Minus)]);
+        parse!("+", vec![bi!(Plus)]);
+        parse!("define", vec![bi!(Define)]);
     }
 
     #[test]
