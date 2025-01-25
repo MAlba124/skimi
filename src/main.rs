@@ -8,7 +8,7 @@ fn repl() {
     let mut e = Evaluator::new();
     loop {
         let mut buffer = String::new();
-        print!("skimi > ");
+        print!("skimi> ");
         stdout.flush().unwrap();
         stdin.read_line(&mut buffer).unwrap();
         let chars = buffer.chars().collect::<Vec<char>>();

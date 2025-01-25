@@ -9,6 +9,7 @@ pub enum Token {
     Minus,
     Plus,
     String(String),
+    Bool(bool),
 }
 
 #[derive(Debug)]
@@ -19,6 +20,7 @@ pub enum ScanError {
     InvalidIdentChar(char),
     InvalidToken,
     PeekNotFlushed,
+    NotABool(char),
 }
 
 impl ScanError {
@@ -159,6 +161,25 @@ impl<'a> Scanner<'a> {
         Ok(Token::Plus)
     }
 
+    fn take_bool(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '#' {
+            unreachable!();
+        }
+        let next = self.next()?;
+        let ret = match next {
+            't' => Token::Bool(true),
+            'f' => Token::Bool(false),
+            _ => return Err(ScanError::NotABool(next)),
+        };
+        if let Ok(peek) = self.peek() {
+            match peek {
+                ' ' | '\n' | '(' | ')' => (),
+                _ => todo!("Illegal boolean"),
+            }
+        }
+        Ok(ret)
+    }
+
     pub fn next_token(&mut self) -> Result<Token, ScanError> {
         if let Some(scanned_next) = self.scanned.take() {
             return Ok(scanned_next);
@@ -182,6 +203,7 @@ impl<'a> Scanner<'a> {
                     self.handle_comment();
                     continue;
                 }
+                '#' => self.take_bool(),
                 '0'..='9' => self.take_number(),
                 'a'..='z' | 'A'..='Z' => self.take_identifier(),
                 '-' => self.take_minus(),
@@ -303,6 +325,13 @@ mod tests {
         );
         scan_eq_vec!("   \"str\"   ", vec![string!("str")]);
         scan_eq_vec!("\n\n\"str\"\n\n", vec![string!("str")]);
+    }
+
+    #[test]
+    fn bool_() {
+        scan_eq_vec!("#t", vec![Token::Bool(true)]);
+        scan_eq_vec!("#f", vec![Token::Bool(false)]);
+        scan_eq_vec!("#t #f", vec![Token::Bool(true), Token::Bool(false)]);
     }
 
     #[test]

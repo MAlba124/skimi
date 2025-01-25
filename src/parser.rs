@@ -15,15 +15,17 @@ pub enum Atom {
     Ident(String),
     String(String),
     BuiltIn(BuiltIn),
+    Bool(bool),
 }
 
 impl std::fmt::Display for Atom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Atom::Num(n) => write!(f, "{n}"),
-            Atom::Ident(_) => todo!(),
-            Atom::String(_) => todo!(),
-            Atom::BuiltIn(_) => todo!(),
+            Atom::Ident(i) => write!(f, "{i}"),
+            Atom::String(s) => write!(f, "{s}"),
+            Atom::BuiltIn(bi) => write!(f, "{bi:?}"),
+            Atom::Bool(b) => write!(f, "{}", if *b { "#t" } else { "#f" }),
         }
     }
 }
@@ -33,6 +35,7 @@ pub enum Expr {
     Atom(Atom),
     Cons(Box<Expr>, Box<Expr>),
     Lambda(Vec<String>, Box<Expr>),
+    If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     Null,
 }
 
@@ -42,6 +45,7 @@ impl std::fmt::Display for Expr {
             Expr::Atom(atom) => write!(f, "{atom}"),
             Expr::Cons(_, _) => write!(f, "Cons"),
             Expr::Lambda(_, _) => write!(f, "Lambda"),
+            Expr::If(_, _, _) => write!(f, "If"),
             Expr::Null => write!(f, "Null"),
         }
     }
@@ -76,18 +80,18 @@ pub struct Parser<'a> {
     scanner: Scanner<'a>,
 }
 
-// TODO:
-// <bool>   ::= true | false
 /// A parser that parses the following grammar.
 ///
 /// <expr>    ::= <atom> | <list>
-/// <atom>    ::= <number> | <ident> | <string> | <builtin>
+/// <atom>    ::= <number> | <ident> | <string> | <builtin> | <bool>
 /// <number>  ::= '-'?[0-9]+
 /// <ident>   ::= [a-zA-Z][a-zA-Z0-9-]*
 /// <string>  ::= '"' char '"'
 /// <builtin> ::= '+' | '-' | 'define'
-/// <list>    ::= '(' 'lambda' | <expr>* ')'
+/// <bool>    ::= '#t' | '#f'
+/// <list>    ::= '(' 'lambda' | <expr>* | <if> ')'
 /// <lambda   ::= 'lambda' '(' <ident>* ')' <expr>
+/// <if>      ::= 'if' <expr> <expr> [<expr>]
 impl<'a> Parser<'a> {
     pub fn new(src: &'a [char]) -> Parser<'a> {
         Self {
@@ -114,6 +118,7 @@ impl<'a> Parser<'a> {
             Token::Minus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))),
             Token::Plus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Plus))),
             Token::String(s) => Ok(Expr::Atom(Atom::String(s))),
+            Token::Bool(b) => Ok(Expr::Atom(Atom::Bool(b))),
             _ => Err(ParseError::UnexpectedToken(next)),
         }
     }
@@ -155,20 +160,31 @@ impl<'a> Parser<'a> {
             body = Expr::Cons(Box::new(exp), Box::new(body));
         }
 
-        // Ok(Expr::Lambda(vars, Box::new(self.expr()?)))
         Ok(Expr::Lambda(vars, Box::new(body)))
+    }
+
+    fn if_(&mut self) -> Result<Expr, ParseError> {
+        self.take(Token::Ident(String::from("if")))?;
+        let condition = Box::new(self.expr()?);
+        let true_branch = Box::new(self.expr()?);
+        let false_branch = if self.scanner.peek_token()? != Token::CPar {
+            Some(Box::new(self.expr()?))
+        } else {
+            None
+        };
+        Ok(Expr::If(condition, true_branch, false_branch))
     }
 
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
-            Token::Num(_) | Token::Minus | Token::Plus | Token::String(_) => self.atom(),
-            Token::Ident(i) => {
-                if i.as_str() == "lambda" {
-                    self.lambda()
-                } else {
-                    self.atom()
-                }
+            Token::Num(_) | Token::Minus | Token::Plus | Token::String(_) | Token::Bool(_) => {
+                self.atom()
             }
+            Token::Ident(i) => match i.as_str() {
+                "lambda" => self.lambda(),
+                "if" => self.if_(),
+                _ => self.atom(),
+            },
             Token::OPar => self.list(),
             Token::CPar => Err(ParseError::UnexpectedToken(Token::CPar)),
         }
@@ -181,15 +197,19 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::{Atom, BuiltIn, Expr, Parser};
+    use crate::{parser::{Atom, BuiltIn, Expr, ParseError, Parser}, scanner::ScanError};
 
     macro_rules! parse {
         ($in:expr, $ex:expr) => {{
             let in_ = $in.chars().collect::<Vec<char>>();
             let mut parser = Parser::new(&in_);
             let mut res = Vec::new();
-            while let Ok(e) = parser.parse_next() {
-                res.push(e);
+            loop {
+                match parser.parse_next() {
+                    Ok(e) => res.push(e),
+                    Err(ParseError::Scan(ScanError::Eof)) => break,
+                    Err(err) => panic!("{err}"),
+                }
             }
             assert_eq!(res, $ex);
         }};
@@ -232,6 +252,12 @@ mod tests {
         };
     }
 
+    macro_rules! bol {
+        ($b:expr) => {
+            Expr::Atom(Atom::Bool($b))
+        };
+    }
+
     #[test]
     fn atom() {
         parse!("123", vec![num!(123)]);
@@ -265,6 +291,37 @@ mod tests {
             vec![list![
                 Expr::Null,
                 list![num!(123), string!("num and string")]
+            ]]
+        );
+    }
+
+    #[test]
+    fn lambda() {
+        parse!(
+            "(lambda () 10)",
+            vec![list![Expr::Lambda(Vec::new(), Box::new(list!(num!(10))))]]
+        );
+        parse!(
+            "(lambda (x) (+ x 1))",
+            vec![list![Expr::Lambda(
+                vec![String::from("x")],
+                Box::new(list!(list!(bi!(Plus), ident!("x"), num!(1))))
+            )]]
+        );
+    }
+
+    #[test]
+    fn if_() {
+        parse!(
+            "(if #t #t)",
+            vec![list![
+                Expr::If(Box::new(bol!(true)), Box::new(bol!(true)), None)
+            ]]
+        );
+        parse!(
+            "(if #t #t #f)",
+            vec![list![
+                Expr::If(Box::new(bol!(true)), Box::new(bol!(true)), Some(Box::new(bol!(false))))
             ]]
         );
     }

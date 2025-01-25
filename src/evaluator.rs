@@ -11,6 +11,7 @@ pub enum EvalError {
     VariableAlreadyExists(String),
     NoVariable(String),
     NotALambda(String),
+    NotABool,
 }
 
 impl std::fmt::Display for EvalError {
@@ -36,6 +37,13 @@ fn get_cons(e: Expr) -> Result<(Box<Expr>, Box<Expr>), EvalError> {
     match e {
         Expr::Cons(car, cdr) => Ok((car, cdr)),
         _ => Err(EvalError::NotACell),
+    }
+}
+
+fn get_bool(e: Expr) -> Result<bool, EvalError> {
+    match e {
+        Expr::Atom(Atom::Bool(b)) => Ok(b),
+        _ => Err(EvalError::NotABool),
     }
 }
 
@@ -174,6 +182,15 @@ impl Evaluator {
 
                 ret
             }
+            Expr::If(condition, true_branch, false_branch) => {
+                if get_bool(self.eval(*condition)?)? {
+                    self.eval(*true_branch)
+                } else if let Some(false_branch) = false_branch {
+                    self.eval(*false_branch)
+                } else {
+                    Ok(Expr::Null)
+                }
+            }
             _ => {
                 let last = self.eval(cdr)?;
                 if last == Expr::Null {
@@ -188,7 +205,7 @@ impl Evaluator {
     pub fn eval(&mut self, expr: Expr) -> Result<Expr, EvalError> {
         match expr {
             Expr::Atom(Atom::Ident(i)) => self.get_variable(&i),
-            Expr::Atom(_) | Expr::Null | Expr::Lambda(_, _) => Ok(expr),
+            Expr::Atom(_) | Expr::Null | Expr::Lambda(_, _) | Expr::If(_, _, _) => Ok(expr),
             Expr::Cons(car, cdr) => self.eval_cons(*car, *cdr),
         }
     }
@@ -253,6 +270,13 @@ mod tests {
 
     #[test]
     fn lambda() {
-        eval_many!("(define my-lambda (lambda () 10)) (my-lambda)", vec![Expr::Null, num!(10)]);
+        eval_many!(
+            "(define my-lambda (lambda () 10)) (my-lambda)",
+            vec![Expr::Null, num!(10)]
+        );
+        eval_many!(
+            "(define my-lambda (lambda (x) x)) (my-lambda 10)",
+            vec![Expr::Null, num!(10)]
+        );
     }
 }
