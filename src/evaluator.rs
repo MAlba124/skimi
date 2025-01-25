@@ -11,6 +11,7 @@ pub enum EvalError {
     VariableAlreadyExists(String),
     NoVariable(String),
     NotALambda(String),
+    UnexpectedArgument(Expr),
     NotABool,
 }
 
@@ -146,6 +147,13 @@ impl Evaluator {
                     )))
                 }
                 BuiltIn::Define => self.define(cdr),
+                BuiltIn::Newline => {
+                    if cdr != Expr::Null {
+                        return Err(EvalError::UnexpectedArgument(cdr));
+                    }
+                    println!();
+                    Ok(Expr::Null)
+                }
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();

@@ -7,6 +7,7 @@ pub enum BuiltIn {
     Plus,
     Minus,
     Define,
+    Newline,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -175,6 +176,11 @@ impl<'a> Parser<'a> {
         Ok(Expr::If(condition, true_branch, false_branch))
     }
 
+    fn newline(&mut self) -> Result<Expr, ParseError> {
+        self.take(Token::Ident(String::from("newline")))?;
+        Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Newline)))
+    }
+
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
             Token::Num(_) | Token::Minus | Token::Plus | Token::String(_) | Token::Bool(_) => {
@@ -183,6 +189,7 @@ impl<'a> Parser<'a> {
             Token::Ident(i) => match i.as_str() {
                 "lambda" => self.lambda(),
                 "if" => self.if_(),
+                "newline" => self.newline(),
                 _ => self.atom(),
             },
             Token::OPar => self.list(),
@@ -324,5 +331,10 @@ mod tests {
                 Expr::If(Box::new(bol!(true)), Box::new(bol!(true)), Some(Box::new(bol!(false))))
             ]]
         );
+    }
+
+    #[test]
+    fn newline() {
+        parse!("(newline)", vec![list!(bi!(Newline))]);
     }
 }
