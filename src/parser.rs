@@ -17,11 +17,34 @@ pub enum Atom {
     BuiltIn(BuiltIn),
 }
 
+impl std::fmt::Display for Atom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Atom::Num(n) => write!(f, "{n}"),
+            Atom::Ident(_) => todo!(),
+            Atom::String(_) => todo!(),
+            Atom::BuiltIn(_) => todo!(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     Atom(Atom),
     Cons(Box<Expr>, Box<Expr>),
+    Lambda(Vec<String>, Box<Expr>),
     Null,
+}
+
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::Atom(atom) => write!(f, "{atom}"),
+            Expr::Cons(_, _) => write!(f, "Cons"),
+            Expr::Lambda(_, _) => write!(f, "Lambda"),
+            Expr::Null => write!(f, "Null"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -63,7 +86,8 @@ pub struct Parser<'a> {
 /// <ident>   ::= [a-zA-Z][a-zA-Z0-9-]*
 /// <string>  ::= '"' char '"'
 /// <builtin> ::= '+' | '-' | 'define'
-/// <list>    ::= '(' <expr>* ')'
+/// <list>    ::= '(' 'lambda' | <expr>* ')'
+/// <lambda   ::= 'lambda' '(' <ident>* ')' <expr>
 impl<'a> Parser<'a> {
     pub fn new(src: &'a [char]) -> Parser<'a> {
         Self {
@@ -108,10 +132,42 @@ impl<'a> Parser<'a> {
         Ok(list)
     }
 
+    fn lambda(&mut self) -> Result<Expr, ParseError> {
+        self.take(Token::Ident(String::from("lambda")))?;
+        self.take(Token::OPar)?;
+        let mut vars = Vec::new();
+        while self.scanner.peek_token()? != Token::CPar {
+            let next = self.scanner.next_token()?;
+            match next {
+                Token::Ident(i) => vars.push(i),
+                _ => return Err(ParseError::UnexpectedToken(next)),
+            }
+        }
+        self.take(Token::CPar)?;
+
+        let mut bodies = Vec::new();
+        while self.scanner.peek_token()? != Token::CPar {
+            bodies.push(self.expr()?);
+        }
+
+        let mut body = Expr::Null;
+        for exp in bodies.into_iter().rev() {
+            body = Expr::Cons(Box::new(exp), Box::new(body));
+        }
+
+        // Ok(Expr::Lambda(vars, Box::new(self.expr()?)))
+        Ok(Expr::Lambda(vars, Box::new(body)))
+    }
+
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
-            Token::Num(_) | Token::Ident(_) | Token::Minus | Token::Plus | Token::String(_) => {
-                self.atom()
+            Token::Num(_) | Token::Minus | Token::Plus | Token::String(_) => self.atom(),
+            Token::Ident(i) => {
+                if i.as_str() == "lambda" {
+                    self.lambda()
+                } else {
+                    self.atom()
+                }
             }
             Token::OPar => self.list(),
             Token::CPar => Err(ParseError::UnexpectedToken(Token::CPar)),

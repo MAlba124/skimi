@@ -10,6 +10,7 @@ pub enum EvalError {
     NotAnIdent,
     VariableAlreadyExists(String),
     NoVariable(String),
+    NotALambda(String),
 }
 
 impl std::fmt::Display for EvalError {
@@ -67,6 +68,17 @@ impl Evaluator {
         Err(EvalError::NoVariable(ident.to_string()))
     }
 
+    fn push_scope(&mut self) {
+        self.scope_stack.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        let _ = self
+            .scope_stack
+            .pop()
+            .expect("Something has gone terribly wrong");
+    }
+
     fn get_num_from_expr(&self, e: Expr) -> Result<i64, EvalError> {
         match e {
             Expr::Atom(Atom::Num(n)) => Ok(n),
@@ -102,10 +114,11 @@ impl Evaluator {
     }
 
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
+        println!("car: {car:?} cdr: {cdr:?}");
         let r = self.eval(car)?;
         match r {
             Expr::Cons(_, _) => todo!(),
-            Expr::Atom(Atom::BuiltIn(bi)) => match bi {
+            Expr::Atom(Atom::BuiltIn(ref bi)) => match bi {
                 BuiltIn::Plus => Ok(Expr::Atom(Atom::Num(
                     self.extract_numbers(cdr)?.iter().sum(),
                 ))),
@@ -118,15 +131,59 @@ impl Evaluator {
                 }
                 BuiltIn::Define => self.define(cdr),
             },
-            Expr::Null => todo!(),
-            _ => todo!("{r:?}"),
+            Expr::Atom(Atom::Ident(i)) => {
+                let Expr::Lambda(var_names, body) = get_car(&self.get_variable(&i)?)? else {
+                    return Err(EvalError::NotALambda(i));
+                };
+
+                let mut var_values = Vec::new();
+                let mut cdr = cdr;
+                while cdr != Expr::Null {
+                    match cdr {
+                        Expr::Atom(_) | Expr::Lambda(_, _) => {
+                            var_values.push(cdr.clone());
+                            cdr = Expr::Null;
+                        }
+                        Expr::Cons(car, next_cdr) => {
+                            var_values.push(self.eval(*car)?);
+                            cdr = *next_cdr;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+
+                if var_values.len() != var_names.len() {
+                    panic!("TODO: lambda takes _ arguments, got _");
+                }
+
+                self.push_scope();
+
+                for (key, value) in var_names.into_iter().zip(var_values.into_iter()) {
+                    if let Err(err) = self.push_var(key, value) {
+                        self.pop_scope();
+                        return Err(err);
+                    }
+                }
+
+                let ret = self.eval(*body);
+                self.pop_scope();
+
+                ret
+            }
+            _ => {
+                let last = self.eval(cdr)?;
+                if last == Expr::Null {
+                    Ok(r)
+                } else {
+                    Ok(last)
+                }
+            }
         }
     }
 
     pub fn eval(&mut self, expr: Expr) -> Result<Expr, EvalError> {
-        println!("{:?}", self.scope_stack);
         match expr {
-            Expr::Atom(_) | Expr::Null => Ok(expr),
+            Expr::Atom(_) | Expr::Null | Expr::Lambda(_, _) => Ok(expr),
             Expr::Cons(car, cdr) => self.eval_cons(*car, *cdr),
         }
     }
@@ -189,3 +246,9 @@ mod tests {
         );
     }
 }
+
+
+// "test2":
+// Cons(
+//     Lambda(["x"], Cons(Atom(BuiltIn(Plus)), Cons(Atom(Num(10)), Cons(Atom(Ident("x")), Null)))), Cons(Cons(Atom(BuiltIn(Plus)), Cons(Atom(Num(100)), Cons(Atom(Ident("x")), Null))), Null)
+// )
