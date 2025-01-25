@@ -8,6 +8,7 @@ pub enum BuiltIn {
     Minus,
     Define,
     Newline,
+    Eq,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,6 +121,7 @@ impl<'a> Parser<'a> {
             Token::Plus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Plus))),
             Token::String(s) => Ok(Expr::Atom(Atom::String(s))),
             Token::Bool(b) => Ok(Expr::Atom(Atom::Bool(b))),
+            Token::Eq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Eq))),
             _ => Err(ParseError::UnexpectedToken(next)),
         }
     }
@@ -183,7 +185,7 @@ impl<'a> Parser<'a> {
 
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
-            Token::Num(_) | Token::Minus | Token::Plus | Token::String(_) | Token::Bool(_) => {
+            Token::Num(_) | Token::Minus | Token::Plus | Token::String(_) | Token::Bool(_) | Token::Eq => {
                 self.atom()
             }
             Token::Ident(i) => match i.as_str() {

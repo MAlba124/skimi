@@ -8,6 +8,11 @@ pub enum Token {
     Ident(String),
     Minus,
     Plus,
+    Eq,
+    // Greater,
+    // Less,
+    // GreaterOrEq,
+    // LessOrEq,
     String(String),
     Bool(bool),
 }
@@ -174,10 +179,23 @@ impl<'a> Scanner<'a> {
         if let Ok(peek) = self.peek() {
             match peek {
                 ' ' | '\n' | '(' | ')' => (),
-                _ => todo!("Illegal boolean"),
+                _ => todo!("illegal boolean"),
             }
         }
         Ok(ret)
+    }
+
+    fn take_eq(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '=' {
+            unreachable!();
+        }
+        if let Ok(peek) = self.peek() {
+            match peek {
+                ' ' | '\n' | '(' | ')' => (),
+                _ => todo!("illegal thing"),
+            }
+        }
+        Ok(Token::Eq)
     }
 
     pub fn next_token(&mut self) -> Result<Token, ScanError> {
@@ -209,6 +227,7 @@ impl<'a> Scanner<'a> {
                 '-' => self.take_minus(),
                 '+' => self.take_plus(),
                 '"' => self.take_string(),
+                '=' => self.take_eq(),
                 _ => Err(ScanError::Eof),
             };
         }
@@ -332,6 +351,11 @@ mod tests {
         scan_eq_vec!("#t", vec![Token::Bool(true)]);
         scan_eq_vec!("#f", vec![Token::Bool(false)]);
         scan_eq_vec!("#t #f", vec![Token::Bool(true), Token::Bool(false)]);
+    }
+
+    #[test]
+    fn eq() {
+        scan_eq_vec!("=", vec![Token::Eq]);
     }
 
     #[test]

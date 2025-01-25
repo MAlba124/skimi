@@ -48,6 +48,24 @@ fn get_bool(e: Expr) -> Result<bool, EvalError> {
     }
 }
 
+fn cons_to_vec(cell: Expr) -> Vec<Expr> {
+    let mut r = Vec::new();
+    let mut cell = cell;
+    loop {
+        match cell {
+            Expr::Cons(ref car, ref cdr) => {
+                r.push(*car.clone());
+                if **cdr == Expr::Null {
+                    break;
+                }
+                cell = *cdr.clone();
+            }
+            _ => r.push(cell.clone()),
+        }
+    }
+    r
+}
+
 pub struct Evaluator {
     scope_stack: Vec<HashMap<String, Expr>>,
 }
@@ -131,6 +149,16 @@ impl Evaluator {
         Ok(Expr::Null)
     }
 
+    fn eq(&mut self, args: Expr) -> Result<Expr, EvalError> {
+        let reduced = cons_to_vec(args).into_iter().map(|e| self.eval(e)).collect::<Result<Vec<Expr>, EvalError>>()?;
+        Ok(Expr::Atom(Atom::Bool(
+            reduced
+                .iter()
+                .zip(reduced.iter().skip(1))
+                .all(|(a, b)| a == b)
+        )))
+    }
+
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
         let r = self.eval(car)?;
         match r {
@@ -154,6 +182,7 @@ impl Evaluator {
                     println!();
                     Ok(Expr::Null)
                 }
+                BuiltIn::Eq => self.eq(cdr),
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();
@@ -252,6 +281,12 @@ mod tests {
         };
     }
 
+    macro_rules! bol {
+        ($b:expr) => {
+            Expr::Atom(Atom::Bool($b))
+        };
+    }
+
     #[test]
     fn arith() {
         eval!("(+ 1 2)", num!(1 + 2));
@@ -286,5 +321,15 @@ mod tests {
             "(define my-lambda (lambda (x) x)) (my-lambda 10)",
             vec![Expr::Null, num!(10)]
         );
+    }
+
+    #[test]
+    fn eq() {
+        eval!("(= 1 1)", bol!(true));
+        eval!("(= 1 2)", bol!(false));
+        eval!("(= 1 1 1 1 1)", bol!(true));
+        eval!("(= 1 2 3 4 5)", bol!(false));
+        eval!("(= 1 (- 2 1))", bol!(true));
+        eval!("(= 1 (- 1 2))", bol!(false));
     }
 }
