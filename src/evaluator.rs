@@ -109,12 +109,20 @@ impl Evaluator {
         let Expr::Atom(Atom::Ident(ident)) = *ident else {
             return Err(EvalError::NotAnIdent);
         };
-        self.push_var(ident, get_car(&value)?)?;
+        let mut car = get_car(&value)?;
+        match car {
+            Expr::Cons(ref maybe, _) => match **maybe {
+                // Lambdas are the car of a one element cell, take it out to make it easier to deal with
+                Expr::Lambda(_, _) => car = *maybe.clone(),
+                _ => (),
+            },
+            _ => (),
+        }
+        self.push_var(ident, car)?;
         Ok(Expr::Null)
     }
 
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
-        println!("car: {car:?} cdr: {cdr:?}");
         let r = self.eval(car)?;
         match r {
             Expr::Cons(_, _) => todo!(),
@@ -131,11 +139,7 @@ impl Evaluator {
                 }
                 BuiltIn::Define => self.define(cdr),
             },
-            Expr::Atom(Atom::Ident(i)) => {
-                let Expr::Lambda(var_names, body) = get_car(&self.get_variable(&i)?)? else {
-                    return Err(EvalError::NotALambda(i));
-                };
-
+            Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();
                 let mut cdr = cdr;
                 while cdr != Expr::Null {
@@ -183,6 +187,7 @@ impl Evaluator {
 
     pub fn eval(&mut self, expr: Expr) -> Result<Expr, EvalError> {
         match expr {
+            Expr::Atom(Atom::Ident(i)) => self.get_variable(&i),
             Expr::Atom(_) | Expr::Null | Expr::Lambda(_, _) => Ok(expr),
             Expr::Cons(car, cdr) => self.eval_cons(*car, *cdr),
         }
@@ -239,16 +244,15 @@ mod tests {
 
     #[test]
     fn define() {
-        eval_many!("(define my-var 10)(+ 0 my-var)", vec![Expr::Null, num!(10)]);
+        eval_many!("(define my-var 10) my-var", vec![Expr::Null, num!(10)]);
         eval_many!(
-            "(define my-var 10)(+ 0 my-var)(+ my-var my-var)",
+            "(define my-var 10) my-var (+ my-var my-var)",
             vec![Expr::Null, num!(10), num!(10 + 10)]
         );
     }
+
+    #[test]
+    fn lambda() {
+        eval_many!("(define my-lambda (lambda () 10)) (my-lambda)", vec![Expr::Null, num!(10)]);
+    }
 }
-
-
-// "test2":
-// Cons(
-//     Lambda(["x"], Cons(Atom(BuiltIn(Plus)), Cons(Atom(Num(10)), Cons(Atom(Ident("x")), Null)))), Cons(Cons(Atom(BuiltIn(Plus)), Cons(Atom(Num(100)), Cons(Atom(Ident("x")), Null))), Null)
-// )
