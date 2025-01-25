@@ -9,6 +9,10 @@ pub enum BuiltIn {
     Define,
     Newline,
     Eq,
+    Greater,
+    Less,
+    GreaterOrEq,
+    LessOrEq,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -122,6 +126,10 @@ impl<'a> Parser<'a> {
             Token::String(s) => Ok(Expr::Atom(Atom::String(s))),
             Token::Bool(b) => Ok(Expr::Atom(Atom::Bool(b))),
             Token::Eq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Eq))),
+            Token::Less => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Less))),
+            Token::Greater => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Greater))),
+            Token::LessOrEq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::LessOrEq))),
+            Token::GreaterOrEq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::GreaterOrEq))),
             _ => Err(ParseError::UnexpectedToken(next)),
         }
     }
@@ -185,9 +193,16 @@ impl<'a> Parser<'a> {
 
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
-            Token::Num(_) | Token::Minus | Token::Plus | Token::String(_) | Token::Bool(_) | Token::Eq => {
-                self.atom()
-            }
+            Token::Num(_)
+            | Token::Minus
+            | Token::Plus
+            | Token::String(_)
+            | Token::Bool(_)
+            | Token::Eq
+            | Token::Greater
+            | Token::Less
+            | Token::GreaterOrEq
+            | Token::LessOrEq => self.atom(),
             Token::Ident(i) => match i.as_str() {
                 "lambda" => self.lambda(),
                 "if" => self.if_(),
@@ -206,7 +221,10 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{parser::{Atom, BuiltIn, Expr, ParseError, Parser}, scanner::ScanError};
+    use crate::{
+        parser::{Atom, BuiltIn, Expr, ParseError, Parser},
+        scanner::ScanError,
+    };
 
     macro_rules! parse {
         ($in:expr, $ex:expr) => {{
@@ -323,15 +341,19 @@ mod tests {
     fn if_() {
         parse!(
             "(if #t #t)",
-            vec![list![
-                Expr::If(Box::new(bol!(true)), Box::new(bol!(true)), None)
-            ]]
+            vec![list![Expr::If(
+                Box::new(bol!(true)),
+                Box::new(bol!(true)),
+                None
+            )]]
         );
         parse!(
             "(if #t #t #f)",
-            vec![list![
-                Expr::If(Box::new(bol!(true)), Box::new(bol!(true)), Some(Box::new(bol!(false))))
-            ]]
+            vec![list![Expr::If(
+                Box::new(bol!(true)),
+                Box::new(bol!(true)),
+                Some(Box::new(bol!(false)))
+            )]]
         );
     }
 

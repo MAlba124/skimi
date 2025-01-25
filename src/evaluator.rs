@@ -150,13 +150,49 @@ impl Evaluator {
     }
 
     fn eq(&mut self, args: Expr) -> Result<Expr, EvalError> {
-        let reduced = cons_to_vec(args).into_iter().map(|e| self.eval(e)).collect::<Result<Vec<Expr>, EvalError>>()?;
+        let reduced = cons_to_vec(args)
+            .into_iter()
+            .map(|e| self.eval(e))
+            .collect::<Result<Vec<Expr>, EvalError>>()?;
         Ok(Expr::Atom(Atom::Bool(
             reduced
                 .iter()
                 .zip(reduced.iter().skip(1))
-                .all(|(a, b)| a == b)
+                .all(|(a, b)| a == b),
         )))
+    }
+
+    fn num_cmp(
+        &mut self,
+        args: Expr,
+        cmpf: impl FnMut((&i64, &i64)) -> bool,
+    ) -> Result<Expr, EvalError> {
+        let reduced = cons_to_vec(args)
+            .into_iter()
+            .map(|e| {
+                let e = self.eval(e)?;
+                self.get_num_from_expr(e)
+            })
+            .collect::<Result<Vec<i64>, EvalError>>()?;
+        Ok(Expr::Atom(Atom::Bool(
+            reduced.iter().zip(reduced.iter().skip(1)).all(cmpf),
+        )))
+    }
+
+    fn less(&mut self, args: Expr) -> Result<Expr, EvalError> {
+        self.num_cmp(args, |(a, b)| a < b)
+    }
+
+    fn greater(&mut self, args: Expr) -> Result<Expr, EvalError> {
+        self.num_cmp(args, |(a, b)| a > b)
+    }
+
+    fn less_or_eq(&mut self, args: Expr) -> Result<Expr, EvalError> {
+        self.num_cmp(args, |(a, b)| a <= b)
+    }
+
+    fn greater_or_eq(&mut self, args: Expr) -> Result<Expr, EvalError> {
+        self.num_cmp(args, |(a, b)| a >= b)
     }
 
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
@@ -183,6 +219,10 @@ impl Evaluator {
                     Ok(Expr::Null)
                 }
                 BuiltIn::Eq => self.eq(cdr),
+                BuiltIn::Greater => self.greater(cdr),
+                BuiltIn::Less => self.less(cdr),
+                BuiltIn::GreaterOrEq => self.greater_or_eq(cdr),
+                BuiltIn::LessOrEq => self.less_or_eq(cdr),
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();
@@ -331,5 +371,51 @@ mod tests {
         eval!("(= 1 2 3 4 5)", bol!(false));
         eval!("(= 1 (- 2 1))", bol!(true));
         eval!("(= 1 (- 1 2))", bol!(false));
+    }
+
+    #[test]
+    fn less() {
+        eval!("(< 1 1)", bol!(false));
+        eval!("(< 1 2)", bol!(true));
+        eval!("(< 1 1 1 1 1)", bol!(false));
+        eval!("(< 1 2 3 4 5)", bol!(true));
+        eval!("(< 1 (- 2 1))", bol!(false));
+        eval!("(< 1 (- 1 2))", bol!(false));
+    }
+
+    #[test]
+    fn greater() {
+        eval!("(> 1 1)", bol!(false));
+        eval!("(> 1 2)", bol!(false));
+        eval!("(> 2 1)", bol!(true));
+        eval!("(> 1 1 1 1 1)", bol!(false));
+        eval!("(> 5 4 3 2 1)", bol!(true));
+        eval!("(> 1 2 3 4 5)", bol!(false));
+        eval!("(> 1 (- 2 1))", bol!(false));
+        eval!("(> 1 (- 1 2))", bol!(true));
+    }
+
+    #[test]
+    fn less_or_eq() {
+        eval!("(<= 1 1)", bol!(true));
+        eval!("(<= 1 2)", bol!(true));
+        eval!("(<= 2 1)", bol!(false));
+        eval!("(<= 1 1 1 1 1)", bol!(true));
+        eval!("(<= 5 4 3 2 1)", bol!(false));
+        eval!("(<= 1 2 3 4 5)", bol!(true));
+        eval!("(<= 1 (- 2 1))", bol!(true));
+        eval!("(<= 1 (- 1 2))", bol!(false));
+    }
+
+    #[test]
+    fn greater_or_eq() {
+        eval!("(>= 1 1)", bol!(true));
+        eval!("(>= 1 2)", bol!(false));
+        eval!("(>= 2 1)", bol!(true));
+        eval!("(>= 1 1 1 1 1)", bol!(true));
+        eval!("(>= 5 4 3 2 1)", bol!(true));
+        eval!("(>= 1 2 3 4 5)", bol!(false));
+        eval!("(>= 1 (- 2 1))", bol!(true));
+        eval!("(>= 1 (- 1 2))", bol!(true));
     }
 }

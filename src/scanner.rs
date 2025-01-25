@@ -9,10 +9,10 @@ pub enum Token {
     Minus,
     Plus,
     Eq,
-    // Greater,
-    // Less,
-    // GreaterOrEq,
-    // LessOrEq,
+    Greater,
+    Less,
+    GreaterOrEq,
+    LessOrEq,
     String(String),
     Bool(bool),
 }
@@ -26,6 +26,8 @@ pub enum ScanError {
     InvalidToken,
     PeekNotFlushed,
     NotABool(char),
+    InvalidLess,
+    InvalidGreater,
 }
 
 impl ScanError {
@@ -198,6 +200,52 @@ impl<'a> Scanner<'a> {
         Ok(Token::Eq)
     }
 
+    fn take_less(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '<' {
+            unreachable!();
+        }
+        match self.peek() {
+            Ok(peek) => match peek {
+                ' ' | '\n' | '(' | ')' => Ok(Token::Less),
+                '=' => {
+                    let _ = self.next()?;
+                    match self.peek() {
+                        Ok(peek) => match peek {
+                            ' ' | '\n' | '(' | ')' => Ok(Token::LessOrEq),
+                            _ => Err(ScanError::InvalidLess),
+                        },
+                        _ => Ok(Token::LessOrEq),
+                    }
+                }
+                _ => Err(ScanError::InvalidLess),
+            },
+            _ => Ok(Token::Less),
+        }
+    }
+
+    fn take_greater(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '>' {
+            unreachable!();
+        }
+        match self.peek() {
+            Ok(peek) => match peek {
+                ' ' | '\n' | '(' | ')' => Ok(Token::Greater),
+                '=' => {
+                    let _ = self.next()?;
+                    match self.peek() {
+                        Ok(peek) => match peek {
+                            ' ' | '\n' | '(' | ')' => Ok(Token::GreaterOrEq),
+                            _ => Err(ScanError::InvalidGreater),
+                        },
+                        _ => Ok(Token::GreaterOrEq),
+                    }
+                }
+                _ => Err(ScanError::InvalidGreater),
+            },
+            _ => Ok(Token::Greater),
+        }
+    }
+
     pub fn next_token(&mut self) -> Result<Token, ScanError> {
         if let Some(scanned_next) = self.scanned.take() {
             return Ok(scanned_next);
@@ -228,6 +276,8 @@ impl<'a> Scanner<'a> {
                 '+' => self.take_plus(),
                 '"' => self.take_string(),
                 '=' => self.take_eq(),
+                '<' => self.take_less(),
+                '>' => self.take_greater(),
                 _ => Err(ScanError::Eof),
             };
         }
@@ -365,6 +415,18 @@ mod tests {
             "(\"string\")",
             vec![Token::OPar, string!("string"), Token::CPar]
         );
+    }
+
+    #[test]
+    fn less() {
+        scan_eq_vec!("<", vec![Token::Less]);
+        scan_eq_vec!("<=", vec![Token::LessOrEq]);
+    }
+
+    #[test]
+    fn greater() {
+        scan_eq_vec!(">", vec![Token::Greater]);
+        scan_eq_vec!(">=", vec![Token::GreaterOrEq]);
     }
 
     #[test]
