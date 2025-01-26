@@ -14,6 +14,7 @@ pub enum BuiltIn {
     GreaterOrEq,
     LessOrEq,
     Else,
+    Modulo,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -96,7 +97,7 @@ pub struct Parser<'a> {
 /// <number>      ::= '-'?[0-9]+
 /// <ident>       ::= [a-zA-Z][a-zA-Z0-9-]*
 /// <string>      ::= '"' char '"'
-/// <builtin>     ::= '+' | '-' | 'define'
+/// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%'
 /// <bool>        ::= '#t' | '#f'
 /// <list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> ')'
 /// <lambda       ::= 'lambda' '(' <ident>* ')' <expr>
@@ -136,6 +137,7 @@ impl<'a> Parser<'a> {
             Token::Greater => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Greater))),
             Token::LessOrEq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::LessOrEq))),
             Token::GreaterOrEq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::GreaterOrEq))),
+            Token::Percent => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Modulo))),
             _ => Err(ParseError::UnexpectedToken(next)),
         }
     }
@@ -217,7 +219,8 @@ impl<'a> Parser<'a> {
             | Token::Greater
             | Token::Less
             | Token::GreaterOrEq
-            | Token::LessOrEq => self.atom(),
+            | Token::LessOrEq
+            | Token::Percent => self.atom(),
             Token::Ident(i) => match i.as_str() {
                 "lambda" => self.lambda(),
                 "if" => self.if_(),
@@ -404,5 +407,10 @@ mod tests {
                 list![bi!(Else), bol!(true)]
             ]]]
         );
+    }
+
+    #[test]
+    fn modulo() {
+        parse!("%", vec![bi!(Modulo)]);
     }
 }

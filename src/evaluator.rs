@@ -196,6 +196,14 @@ impl Evaluator {
         self.num_cmp(args, |(a, b)| a >= b)
     }
 
+    fn modulo(&mut self, args: Expr) -> Result<Expr, EvalError> {
+        let numbers = self.extract_numbers(args)?;
+        let fe = *numbers.first().expect("Checked");
+        Ok(Expr::Atom(Atom::Num(
+            numbers.iter().skip(1).fold(fe, |a, b| a % b),
+        )))
+    }
+
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
         let r = self.eval(car)?;
         match r {
@@ -224,6 +232,7 @@ impl Evaluator {
                 BuiltIn::Less => self.less(cdr),
                 BuiltIn::GreaterOrEq => self.greater_or_eq(cdr),
                 BuiltIn::LessOrEq => self.less_or_eq(cdr),
+                BuiltIn::Modulo => self.modulo(cdr),
                 BuiltIn::Else => Ok(Expr::Atom(Atom::Bool(true))),
             },
             Expr::Lambda(var_names, body) => {
@@ -440,5 +449,11 @@ mod tests {
     fn cond() {
         eval!("(cond ((< 1 2) #t) (else #f))", bol!(true));
         eval!("(cond ((< 2 1) #t) (else #f))", bol!(false));
+    }
+
+    #[test]
+    fn modulo() {
+        eval!("(% 8 4 2)", num!(8 % 4 % 2));
+        eval!("(% 12834 23)", num!(12834 % 23));
     }
 }

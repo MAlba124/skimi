@@ -15,6 +15,7 @@ pub enum Token {
     LessOrEq,
     String(String),
     Bool(bool),
+    Percent,
 }
 
 #[derive(Debug)]
@@ -28,6 +29,7 @@ pub enum ScanError {
     NotABool(char),
     InvalidLess,
     InvalidGreater,
+    InvalidPercent,
 }
 
 impl ScanError {
@@ -246,6 +248,19 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    fn take_percent(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '%' {
+            unreachable!();
+        }
+        match self.peek() {
+            Ok(peek) => match peek {
+                ' ' | '\n' | '(' | ')' => Ok(Token::Percent),
+                _ => Err(ScanError::InvalidPercent),
+            }
+            _ => Ok(Token::Percent),
+        }
+    }
+
     pub fn next_token(&mut self) -> Result<Token, ScanError> {
         if let Some(scanned_next) = self.scanned.take() {
             return Ok(scanned_next);
@@ -278,6 +293,7 @@ impl<'a> Scanner<'a> {
                 '=' => self.take_eq(),
                 '<' => self.take_less(),
                 '>' => self.take_greater(),
+                '%' => self.take_percent(),
                 _ => Err(ScanError::Eof),
             };
         }
@@ -427,6 +443,11 @@ mod tests {
     fn greater() {
         scan_eq_vec!(">", vec![Token::Greater]);
         scan_eq_vec!(">=", vec![Token::GreaterOrEq]);
+    }
+
+    #[test]
+    fn percent() {
+        scan_eq_vec!("%", vec![Token::Percent]);
     }
 
     #[test]
