@@ -1,6 +1,13 @@
-use std::{fs::File, io::{Read, Write}, path::PathBuf};
+use std::{
+    fs::File,
+    io::{Read, Write},
+    path::PathBuf,
+};
 
-use skimi::{evaluator::Evaluator, parser::{Expr, Parser}};
+use skimi::{
+    evaluator::Evaluator,
+    parser::{Expr, Parser},
+};
 
 fn repl() {
     let stdin = std::io::stdin();
@@ -18,9 +25,11 @@ fn repl() {
             // println!("{expr:?}");
             let res = e.eval(expr);
             match res {
-                Ok(v) => if v != Expr::Null {
-                    println!("{v}");
-                },
+                Ok(v) => {
+                    if v != Expr::Null {
+                        println!("{v}");
+                    }
+                }
                 Err(err) => eprintln!("{err}"),
             }
         }

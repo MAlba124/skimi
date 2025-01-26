@@ -40,12 +40,20 @@ impl std::fmt::Display for Atom {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DoVariable {
+    pub ident: String,
+    pub init: Expr,
+    pub step: Expr,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     Atom(Atom),
     Cons(Box<Expr>, Box<Expr>),
     Lambda(Vec<String>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     Cond(Vec<Expr>),
+    Do(Vec<DoVariable>, Box<Expr>, Box<Expr>),
     Null,
 }
 
@@ -58,6 +66,7 @@ impl std::fmt::Display for Expr {
             Expr::If(_, _, _) => write!(f, "If"),
             Expr::Null => write!(f, "Null"),
             Expr::Cond(_) => write!(f, "Cond"),
+            Expr::Do(_, _, _) => write!(f, "Do"),
         }
     }
 }
@@ -100,11 +109,13 @@ pub struct Parser<'a> {
 /// <string>      ::= '"' char '"'
 /// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%' | 'display' | 'newline'
 /// <bool>        ::= '#t' | '#f'
-/// <list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> ')'
+/// <list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> | <do> ')'
 /// <lambda       ::= 'lambda' '(' <ident>* ')' <expr>
 /// <if>          ::= 'if' <expr> <expr> [<expr>]
 /// <cond>        ::= 'cond' <cond-clause>*
 /// <cond-clause> ::= '(' <expr> <expr> ')' | '(' 'else' <expr> ')'
+/// <do>          ::= 'do' '(' <do-variable> ')' '(' <expr>* ')' <expr>*
+/// <do-variable> ::= '(' <ident> <expr> <expr> ')'
 impl<'a> Parser<'a> {
     pub fn new(src: &'a [char]) -> Parser<'a> {
         Self {
@@ -210,6 +221,57 @@ impl<'a> Parser<'a> {
         Ok(Expr::Cond(clauses))
     }
 
+    fn do_variable(&mut self) -> Result<DoVariable, ParseError> {
+        let var = self.list()?;
+        match var {
+            Expr::Cons(ident, cdr) => {
+                let Expr::Atom(Atom::Ident(ident)) = *ident else {
+                    todo!();
+                };
+                match *cdr {
+                    Expr::Cons(init, step) => {
+                        let Expr::Cons(step, should_be_null) = *step else {
+                            todo!();
+                        };
+                        assert_eq!(*should_be_null, Expr::Null);
+                        Ok(DoVariable {
+                            ident,
+                            init: *init,
+                            step: *step,
+                        })
+                    }
+                    _ => todo!(),
+                }
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn do_(&mut self) -> Result<Expr, ParseError> {
+        self.take(Token::Ident(String::from("do")))?;
+        self.take(Token::OPar)?;
+        let mut vars: Vec<DoVariable> = Vec::new();
+        while self.scanner.peek_token()? != Token::CPar {
+            vars.push(self.do_variable()?);
+        }
+        self.take(Token::CPar)?;
+
+        let test = self.list()?;
+
+        let mut body = Vec::new();
+
+        while self.scanner.peek_token()? != Token::CPar {
+            body.push(self.expr()?);
+        }
+
+        let mut body_cell = Expr::Null;
+        for bod in body.into_iter().rev() {
+            body_cell = Expr::Cons(Box::new(bod), Box::new(body_cell));
+        }
+
+        Ok(Expr::Do(vars, Box::new(test), Box::new(body_cell)))
+    }
+
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
             Token::Num(_)
@@ -228,6 +290,7 @@ impl<'a> Parser<'a> {
                 "if" => self.if_(),
                 "newline" => self.newline(),
                 "cond" => self.cond(),
+                "do" => self.do_(),
                 _ => self.atom(),
             },
             Token::OPar => self.list(),
@@ -243,7 +306,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        parser::{Atom, BuiltIn, Expr, ParseError, Parser},
+        parser::{Atom, BuiltIn, DoVariable, Expr, ParseError, Parser},
         scanner::ScanError,
     };
 
@@ -419,5 +482,42 @@ mod tests {
     #[test]
     fn display() {
         parse!("display", vec![bi!(Display)]);
+    }
+
+    #[test]
+    fn list_macro() {
+        assert_eq!(
+            list![bi!(Plus), ident!("x"), num!(10)],
+            Expr::Cons(
+                Box::new(bi!(Plus)),
+                Box::new(
+                    Expr::Cons(
+                        Box::new(ident!("x")),
+                        Box::new(
+                            Expr::Cons(
+                                Box::new(num!(10)),
+                                Box::new(Expr::Null),
+                            )
+                        )
+                    )
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn do_() {
+        parse!(
+            "(do ((x 0 (+ x 1))) ((> x 10) x) (display x) (newline))",
+            vec![list![Expr::Do(
+                vec![DoVariable {
+                    ident: String::from("x"),
+                    init: num!(0),
+                    step: list![bi!(Plus), ident!("x"), num!(1)]
+                }],
+                Box::new(list![list![bi!(Greater), ident!("x"), num!(10)], ident!("x")]),
+                Box::new(list![list![bi!(Display), ident!("x")], list![bi!(Newline)]]),
+            )]]
+        );
     }
 }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error};
 
-use crate::parser::{Atom, BuiltIn, Expr};
+use crate::parser::{Atom, BuiltIn, DoVariable, Expr};
 
 #[derive(Debug)]
 pub enum EvalError {
@@ -105,6 +105,18 @@ impl Evaluator {
             .scope_stack
             .pop()
             .expect("Something has gone terribly wrong");
+    }
+
+    fn update_var(&mut self, ident: &str, value: Expr) -> Result<(), EvalError> {
+        for scope in self.scope_stack.iter_mut().rev() {
+            if scope.contains_key(ident) {
+                if let Some(var) = scope.get_mut(ident) {
+                    *var = value;
+                    return Ok(());
+                }
+            }
+        }
+        Err(EvalError::NoVariable(ident.to_string()))
     }
 
     fn get_num_from_expr(&self, e: Expr) -> Result<i64, EvalError> {
@@ -305,7 +317,7 @@ impl Evaluator {
         }
     }
 
-    pub fn eval_cond(&mut self, clauses: Vec<Expr>) -> Result<Expr, EvalError> {
+    fn eval_cond(&mut self, clauses: Vec<Expr>) -> Result<Expr, EvalError> {
         for clause in clauses {
             match clause {
                 Expr::Cons(condition, cdr) => {
@@ -319,12 +331,50 @@ impl Evaluator {
         Ok(Expr::Null)
     }
 
+    fn eval_do(
+        &mut self,
+        vars: Vec<DoVariable>,
+        test: Expr,
+        body: Expr,
+    ) -> Result<Expr, EvalError> {
+        self.push_scope();
+        for var in &vars {
+            self.push_var((*var.ident).to_string(), var.init.clone())?;
+        }
+
+        #[allow(unused_assignments)]
+        let mut res = Expr::Null;
+
+        loop {
+            match test {
+                Expr::Cons(ref condition, ref final_) => {
+                    if get_bool(self.eval(*condition.clone())?) {
+                        res = self.eval(*final_.clone())?;
+                        break;
+                    }
+                }
+                _ => todo!(),
+            }
+
+            let _ = self.eval(body.clone())?;
+
+            for var in &vars {
+                let stepped = self.eval(var.step.clone())?;
+                self.update_var(&var.ident, stepped)?;
+            }
+        }
+
+        self.pop_scope();
+        Ok(res)
+    }
+
     pub fn eval(&mut self, expr: Expr) -> Result<Expr, EvalError> {
         match expr {
             Expr::Atom(Atom::Ident(i)) => self.get_variable(&i),
             Expr::Atom(_) | Expr::Null | Expr::Lambda(_, _) | Expr::If(_, _, _) => Ok(expr),
             Expr::Cons(car, cdr) => self.eval_cons(*car, *cdr),
             Expr::Cond(clauses) => self.eval_cond(clauses),
+            Expr::Do(vars, test, body) => self.eval_do(vars, *test, *body),
         }
     }
 }

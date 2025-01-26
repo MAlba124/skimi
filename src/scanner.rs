@@ -256,7 +256,7 @@ impl<'a> Scanner<'a> {
             Ok(peek) => match peek {
                 ' ' | '\n' | '(' | ')' => Ok(Token::Percent),
                 _ => Err(ScanError::InvalidPercent),
-            }
+            },
             _ => Ok(Token::Percent),
         }
     }
