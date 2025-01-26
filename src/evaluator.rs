@@ -394,6 +394,7 @@ impl Evaluator {
             Expr::Cons(car, cdr) => self.eval_cons(*car, *cdr),
             Expr::Cond(clauses) => self.eval_cond(clauses),
             Expr::Do(vars, test, body) => self.eval_do(vars, *test, *body),
+            Expr::Quoted(_) => Ok(expr),
         }
     }
 }

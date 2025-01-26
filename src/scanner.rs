@@ -16,6 +16,7 @@ pub enum Token {
     String(String),
     Bool(bool),
     Percent,
+    Tick,
 }
 
 #[derive(Debug)]
@@ -261,6 +262,13 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    fn take_tick(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '\'' {
+            unreachable!();
+        }
+        Ok(Token::Tick)
+    }
+
     pub fn next_token(&mut self) -> Result<Token, ScanError> {
         if let Some(scanned_next) = self.scanned.take() {
             return Ok(scanned_next);
@@ -294,6 +302,7 @@ impl<'a> Scanner<'a> {
                 '<' => self.take_less(),
                 '>' => self.take_greater(),
                 '%' => self.take_percent(),
+                '\'' => self.take_tick(),
                 _ => Err(ScanError::Eof),
             };
         }
@@ -448,6 +457,11 @@ mod tests {
     #[test]
     fn percent() {
         scan_eq_vec!("%", vec![Token::Percent]);
+    }
+
+    #[test]
+    fn tick() {
+        scan_eq_vec!("'", vec![Token::Tick]);
     }
 
     #[test]

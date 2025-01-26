@@ -55,6 +55,7 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     Cond(Vec<Expr>),
     Do(Vec<DoVariable>, Box<Expr>, Box<Expr>),
+    Quoted(Box<Expr>),
     Null,
 }
 
@@ -62,12 +63,13 @@ impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::Atom(atom) => write!(f, "{atom}"),
-            Expr::Cons(_, _) => write!(f, "Cons"),
+            Expr::Cons(car, cdr) => write!(f, "{car} {cdr}"),
             Expr::Lambda(_, _) => write!(f, "Lambda"),
             Expr::If(_, _, _) => write!(f, "If"),
             Expr::Null => write!(f, "Null"),
             Expr::Cond(_) => write!(f, "Cond"),
             Expr::Do(_, _, _) => write!(f, "Do"),
+            Expr::Quoted(v) => write!(f, "{v}"),
         }
     }
 }
@@ -274,6 +276,11 @@ impl<'a> Parser<'a> {
         Ok(Expr::Do(vars, Box::new(test), Box::new(body_cell)))
     }
 
+    fn quote(&mut self) -> Result<Expr, ParseError> {
+        self.take(Token::Tick)?;
+        Ok(Expr::Quoted(Box::new(self.expr()?)))
+    }
+
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
             Token::Num(_)
@@ -297,6 +304,7 @@ impl<'a> Parser<'a> {
             },
             Token::OPar => self.list(),
             Token::CPar => Err(ParseError::UnexpectedToken(Token::CPar)),
+            Token::Tick => self.quote(),
         }
     }
 
@@ -521,5 +529,15 @@ mod tests {
                 Box::new(list![list![bi!(Display), ident!("x")], list![bi!(Newline)]]),
             )]]
         );
+    }
+
+    #[test]
+    fn set() {
+        parse!("set!", vec![bi!(Set)]);
+    }
+
+    #[test]
+    fn quoted() {
+        parse!("'(1 2 3)", vec![Expr::Quoted(Box::new(list![num!(1), num!(2), num!(3)]))]);
     }
 }
