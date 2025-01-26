@@ -204,6 +204,19 @@ impl Evaluator {
         )))
     }
 
+    fn display(&mut self, arg: Expr) -> Result<Expr, EvalError> {
+        match arg {
+            Expr::Cons(car, cdr) => {
+                if *cdr != Expr::Null {
+                    return Err(EvalError::UnexpectedArgument(*cdr));
+                }
+                print!("{car}");
+            }
+            _ => print!("{arg}"),
+        }
+        Ok(Expr::Null)
+    }
+
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
         let r = self.eval(car)?;
         match r {
@@ -234,6 +247,7 @@ impl Evaluator {
                 BuiltIn::LessOrEq => self.less_or_eq(cdr),
                 BuiltIn::Modulo => self.modulo(cdr),
                 BuiltIn::Else => Ok(Expr::Atom(Atom::Bool(true))),
+                BuiltIn::Display => self.display(cdr),
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();

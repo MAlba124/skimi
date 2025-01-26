@@ -15,6 +15,7 @@ pub enum BuiltIn {
     LessOrEq,
     Else,
     Modulo,
+    Display,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,7 +98,7 @@ pub struct Parser<'a> {
 /// <number>      ::= '-'?[0-9]+
 /// <ident>       ::= [a-zA-Z][a-zA-Z0-9-]*
 /// <string>      ::= '"' char '"'
-/// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%'
+/// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%' | 'display' | 'newline'
 /// <bool>        ::= '#t' | '#f'
 /// <list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> ')'
 /// <lambda       ::= 'lambda' '(' <ident>* ')' <expr>
@@ -126,6 +127,7 @@ impl<'a> Parser<'a> {
             Token::Ident(i) => match i.as_str() {
                 "define" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Define))),
                 "else" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Else))),
+                "display" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Display))),
                 _ => Ok(Expr::Atom(Atom::Ident(i))),
             },
             Token::Minus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))),
@@ -412,5 +414,10 @@ mod tests {
     #[test]
     fn modulo() {
         parse!("%", vec![bi!(Modulo)]);
+    }
+
+    #[test]
+    fn display() {
+        parse!("display", vec![bi!(Display)]);
     }
 }
