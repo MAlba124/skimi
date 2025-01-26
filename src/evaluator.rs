@@ -230,6 +230,20 @@ impl Evaluator {
         Ok(Expr::Null)
     }
 
+    fn set(&mut self, arg: Expr) -> Result<Expr, EvalError> {
+        match arg {
+            Expr::Cons(ident, val) => {
+                let Expr::Atom(Atom::Ident(ident)) = *ident else {
+                    todo!();
+                };
+                let val = self.eval(*val)?;
+                self.update_var(&ident, val)?;
+            }
+            _ => todo!(),
+        }
+        Ok(Expr::Null)
+    }
+
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
         let r = self.eval(car)?;
         match r {
@@ -261,6 +275,7 @@ impl Evaluator {
                 BuiltIn::Modulo => self.modulo(cdr),
                 BuiltIn::Else => Ok(Expr::Atom(Atom::Bool(true))),
                 BuiltIn::Display => self.display(cdr),
+                BuiltIn::Set => self.set(cdr),
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();
@@ -356,7 +371,11 @@ impl Evaluator {
                 _ => todo!(),
             }
 
+            self.push_scope();
+
             let _ = self.eval(body.clone())?;
+
+            self.pop_scope();
 
             for var in &vars {
                 let stepped = self.eval(var.step.clone())?;

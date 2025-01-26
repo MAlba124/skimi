@@ -16,6 +16,7 @@ pub enum BuiltIn {
     Else,
     Modulo,
     Display,
+    Set,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,6 +140,7 @@ impl<'a> Parser<'a> {
                 "define" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Define))),
                 "else" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Else))),
                 "display" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Display))),
+                "set!" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Set))),
                 _ => Ok(Expr::Atom(Atom::Ident(i))),
             },
             Token::Minus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))),
