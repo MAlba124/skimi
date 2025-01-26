@@ -12,7 +12,7 @@ pub enum EvalError {
     NoVariable(String),
     NotALambda(String),
     UnexpectedArgument(Expr),
-    NotABool,
+    IllegalCondClause,
 }
 
 impl std::fmt::Display for EvalError {
@@ -41,10 +41,11 @@ fn get_cons(e: Expr) -> Result<(Box<Expr>, Box<Expr>), EvalError> {
     }
 }
 
-fn get_bool(e: Expr) -> Result<bool, EvalError> {
+fn get_bool(e: Expr) -> bool {
     match e {
-        Expr::Atom(Atom::Bool(b)) => Ok(b),
-        _ => Err(EvalError::NotABool),
+        Expr::Atom(Atom::Bool(b)) => b,
+        Expr::Null => false,
+        _ => true,
     }
 }
 
@@ -223,6 +224,7 @@ impl Evaluator {
                 BuiltIn::Less => self.less(cdr),
                 BuiltIn::GreaterOrEq => self.greater_or_eq(cdr),
                 BuiltIn::LessOrEq => self.less_or_eq(cdr),
+                BuiltIn::Else => Ok(Expr::Atom(Atom::Bool(true))),
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();
@@ -260,7 +262,7 @@ impl Evaluator {
                 ret
             }
             Expr::If(condition, true_branch, false_branch) => {
-                if get_bool(self.eval(*condition)?)? {
+                if get_bool(self.eval(*condition)?) {
                     self.eval(*true_branch)
                 } else if let Some(false_branch) = false_branch {
                     self.eval(*false_branch)
@@ -279,11 +281,26 @@ impl Evaluator {
         }
     }
 
+    pub fn eval_cond(&mut self, clauses: Vec<Expr>) -> Result<Expr, EvalError> {
+        for clause in clauses {
+            match clause {
+                Expr::Cons(condition, cdr) => {
+                    if get_bool(self.eval(*condition)?) {
+                        return self.eval(*cdr);
+                    }
+                }
+                _ => return Err(EvalError::IllegalCondClause),
+            }
+        }
+        Ok(Expr::Null)
+    }
+
     pub fn eval(&mut self, expr: Expr) -> Result<Expr, EvalError> {
         match expr {
             Expr::Atom(Atom::Ident(i)) => self.get_variable(&i),
             Expr::Atom(_) | Expr::Null | Expr::Lambda(_, _) | Expr::If(_, _, _) => Ok(expr),
             Expr::Cons(car, cdr) => self.eval_cons(*car, *cdr),
+            Expr::Cond(clauses) => self.eval_cond(clauses),
         }
     }
 }
@@ -417,5 +434,11 @@ mod tests {
         eval!("(>= 1 2 3 4 5)", bol!(false));
         eval!("(>= 1 (- 2 1))", bol!(true));
         eval!("(>= 1 (- 1 2))", bol!(true));
+    }
+
+    #[test]
+    fn cond() {
+        eval!("(cond ((< 1 2) #t) (else #f))", bol!(true));
+        eval!("(cond ((< 2 1) #t) (else #f))", bol!(false));
     }
 }

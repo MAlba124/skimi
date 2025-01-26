@@ -13,6 +13,7 @@ pub enum BuiltIn {
     Less,
     GreaterOrEq,
     LessOrEq,
+    Else,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,6 +43,7 @@ pub enum Expr {
     Cons(Box<Expr>, Box<Expr>),
     Lambda(Vec<String>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
+    Cond(Vec<Expr>),
     Null,
 }
 
@@ -53,6 +55,7 @@ impl std::fmt::Display for Expr {
             Expr::Lambda(_, _) => write!(f, "Lambda"),
             Expr::If(_, _, _) => write!(f, "If"),
             Expr::Null => write!(f, "Null"),
+            Expr::Cond(_) => write!(f, "Cond"),
         }
     }
 }
@@ -88,16 +91,18 @@ pub struct Parser<'a> {
 
 /// A parser that parses the following grammar.
 ///
-/// <expr>    ::= <atom> | <list>
-/// <atom>    ::= <number> | <ident> | <string> | <builtin> | <bool>
-/// <number>  ::= '-'?[0-9]+
-/// <ident>   ::= [a-zA-Z][a-zA-Z0-9-]*
-/// <string>  ::= '"' char '"'
-/// <builtin> ::= '+' | '-' | 'define'
-/// <bool>    ::= '#t' | '#f'
-/// <list>    ::= '(' 'lambda' | <expr>* | <if> ')'
-/// <lambda   ::= 'lambda' '(' <ident>* ')' <expr>
-/// <if>      ::= 'if' <expr> <expr> [<expr>]
+/// <expr>        ::= <atom> | <list>
+/// <atom>        ::= <number> | <ident> | <string> | <builtin> | <bool>
+/// <number>      ::= '-'?[0-9]+
+/// <ident>       ::= [a-zA-Z][a-zA-Z0-9-]*
+/// <string>      ::= '"' char '"'
+/// <builtin>     ::= '+' | '-' | 'define'
+/// <bool>        ::= '#t' | '#f'
+/// <list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> ')'
+/// <lambda       ::= 'lambda' '(' <ident>* ')' <expr>
+/// <if>          ::= 'if' <expr> <expr> [<expr>]
+/// <cond>        ::= 'cond' <cond-clause>*
+/// <cond-clause> ::= '(' <expr> <expr> ')' | '(' 'else' <expr> ')'
 impl<'a> Parser<'a> {
     pub fn new(src: &'a [char]) -> Parser<'a> {
         Self {
@@ -119,6 +124,7 @@ impl<'a> Parser<'a> {
             Token::Num(n) => Ok(Expr::Atom(Atom::Num(n))),
             Token::Ident(i) => match i.as_str() {
                 "define" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Define))),
+                "else" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Else))),
                 _ => Ok(Expr::Atom(Atom::Ident(i))),
             },
             Token::Minus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))),
@@ -191,6 +197,15 @@ impl<'a> Parser<'a> {
         Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Newline)))
     }
 
+    fn cond(&mut self) -> Result<Expr, ParseError> {
+        self.take(Token::Ident(String::from("cond")))?;
+        let mut clauses = Vec::new();
+        while self.scanner.peek_token()? != Token::CPar {
+            clauses.push(self.expr()?);
+        }
+        Ok(Expr::Cond(clauses))
+    }
+
     fn expr(&mut self) -> Result<Expr, ParseError> {
         match self.scanner.peek_token()? {
             Token::Num(_)
@@ -207,6 +222,7 @@ impl<'a> Parser<'a> {
                 "lambda" => self.lambda(),
                 "if" => self.if_(),
                 "newline" => self.newline(),
+                "cond" => self.cond(),
                 _ => self.atom(),
             },
             Token::OPar => self.list(),
@@ -285,6 +301,12 @@ mod tests {
         };
     }
 
+    macro_rules! cond {
+        ($($clauses:expr),+) => {
+            Expr::Cond(vec![$($clauses),+])
+        };
+    }
+
     #[test]
     fn atom() {
         parse!("123", vec![num!(123)]);
@@ -360,5 +382,27 @@ mod tests {
     #[test]
     fn newline() {
         parse!("(newline)", vec![list!(bi!(Newline))]);
+    }
+
+    #[test]
+    fn cond() {
+        parse!(
+            "(cond (else #t))",
+            vec![list![cond![list![bi!(Else), bol!(true)]]]]
+        );
+        parse!(
+            "(cond ((< 1 2) #t))",
+            vec![list![cond![list![
+                list![bi!(Less), num!(1), num!(2)],
+                bol!(true)
+            ]]]]
+        );
+        parse!(
+            "(cond ((< 1 2) #t) (else #t))",
+            vec![list![cond![
+                list![list![bi!(Less), num!(1), num!(2)], bol!(true)],
+                list![bi!(Else), bol!(true)]
+            ]]]
+        );
     }
 }
