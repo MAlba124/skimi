@@ -151,7 +151,7 @@ pub struct Parser<'a> {
 
 /// A parser that parses the following grammar.
 ///
-/// <expr>        ::= <atom> | <list>
+/// <expr>        ::= <atom> | <list> | <comment>
 /// <atom>        ::= <number> | <ident> | <string> | <builtin> | <bool>
 /// <number>      ::= '-'?[0-9]+
 /// <ident>       ::= [a-zA-Z][a-zA-Z0-9-]*
@@ -165,6 +165,7 @@ pub struct Parser<'a> {
 /// <cond-clause> ::= '(' <expr> <expr> ')' | '(' 'else' <expr> ')'
 /// <do>          ::= 'do' '(' <do-variable> ')' '(' <expr>* ')' <expr>*
 /// <do-variable> ::= '(' <ident> <expr> <expr> ')'
+/// <comment>     ::= ';' <EOL>
 impl<'a> Parser<'a> {
     pub fn new(src: &'a [char]) -> Parser<'a> {
         Self {
