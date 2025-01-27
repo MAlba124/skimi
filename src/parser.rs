@@ -2,6 +2,53 @@ use std::error::Error;
 
 use crate::scanner::{ScanError, Scanner, Token};
 
+macro_rules! list_from_vec {
+    ($vec:expr) => {
+        {
+            let mut list = Expr::Null;
+            for e in $vec.into_iter().rev() {
+                list = Expr::Cons(Box::new(e), Box::new(list));
+            }
+            list
+        }
+    };
+}
+
+#[cfg(test)]
+macro_rules! list {
+    ($($exprs:expr),+) => {
+        list_from_vec!(vec![$($exprs),+])
+    };
+}
+
+macro_rules! num {
+    ($n:expr) => {
+        Expr::Atom(Atom::Num($n))
+    };
+}
+
+macro_rules! bol {
+    ($b:expr) => {
+        Expr::Atom(Atom::Bool($b))
+    };
+}
+
+macro_rules! bi {
+    ($v:ident) => {
+        Expr::Atom(Atom::BuiltIn(BuiltIn::$v))
+    };
+}
+
+pub(crate) use list_from_vec;
+#[cfg(test)]
+pub(crate) use list;
+#[cfg(test)]
+pub(crate) use num;
+#[cfg(test)]
+pub(crate) use bol;
+#[cfg(test)]
+pub(crate) use bi;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BuiltIn {
     Plus,
@@ -139,26 +186,26 @@ impl<'a> Parser<'a> {
     fn atom(&mut self) -> Result<Expr, ParseError> {
         let next = self.scanner.next_token()?;
         match next {
-            Token::Num(n) => Ok(Expr::Atom(Atom::Num(n))),
+            Token::Num(n) => Ok(num!(n)),
             Token::Ident(i) => match i.as_str() {
-                "define" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Define))),
-                "else" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Else))),
-                "display" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Display))),
-                "set!" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Set))),
-                "car" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Car))),
-                "cdr" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Cdr))),
+                "define" => Ok(bi!(Define)),
+                "else" => Ok(bi!(Else)),
+                "display" => Ok(bi!(Display)),
+                "set!" => Ok(bi!(Set)),
+                "car" => Ok(bi!(Car)),
+                "cdr" => Ok(bi!(Cdr)),
                 _ => Ok(Expr::Atom(Atom::Ident(i))),
             },
-            Token::Minus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))),
-            Token::Plus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Plus))),
+            Token::Minus => Ok(bi!(Minus)),
+            Token::Plus => Ok(bi!(Plus)),
             Token::String(s) => Ok(Expr::Atom(Atom::String(s))),
-            Token::Bool(b) => Ok(Expr::Atom(Atom::Bool(b))),
-            Token::Eq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Eq))),
-            Token::Less => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Less))),
-            Token::Greater => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Greater))),
-            Token::LessOrEq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::LessOrEq))),
-            Token::GreaterOrEq => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::GreaterOrEq))),
-            Token::Percent => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Modulo))),
+            Token::Bool(b) => Ok(bol!(b)),
+            Token::Eq => Ok(bi!(Eq)),
+            Token::Less => Ok(bi!(Less)),
+            Token::Greater => Ok(bi!(Greater)),
+            Token::LessOrEq => Ok(bi!(LessOrEq)),
+            Token::GreaterOrEq => Ok(bi!(GreaterOrEq)),
+            Token::Percent => Ok(bi!(Modulo)),
             _ => Err(ParseError::UnexpectedToken(next)),
         }
     }
@@ -169,12 +216,8 @@ impl<'a> Parser<'a> {
         while self.scanner.peek_token().unwrap() != Token::CPar {
             exprs.push(self.expr()?);
         }
-        let mut list = Expr::Null;
-        for expr in exprs.into_iter().rev() {
-            list = Expr::Cons(Box::new(expr), Box::new(list));
-        }
         self.take(Token::CPar)?;
-        Ok(list)
+        Ok(list_from_vec!(exprs))
     }
 
     fn lambda(&mut self) -> Result<Expr, ParseError> {
@@ -195,12 +238,7 @@ impl<'a> Parser<'a> {
             bodies.push(self.expr()?);
         }
 
-        let mut body = Expr::Null;
-        for exp in bodies.into_iter().rev() {
-            body = Expr::Cons(Box::new(exp), Box::new(body));
-        }
-
-        Ok(Expr::Lambda(vars, Box::new(body)))
+        Ok(Expr::Lambda(vars, Box::new(list_from_vec!(bodies))))
     }
 
     fn if_(&mut self) -> Result<Expr, ParseError> {
@@ -272,12 +310,7 @@ impl<'a> Parser<'a> {
             body.push(self.expr()?);
         }
 
-        let mut body_cell = Expr::Null;
-        for bod in body.into_iter().rev() {
-            body_cell = Expr::Cons(Box::new(bod), Box::new(body_cell));
-        }
-
-        Ok(Expr::Do(vars, Box::new(test), Box::new(body_cell)))
+        Ok(Expr::Do(vars, Box::new(test), Box::new(list_from_vec!(body))))
     }
 
     fn quote(&mut self) -> Result<Expr, ParseError> {
@@ -320,7 +353,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        parser::{Atom, BuiltIn, DoVariable, Expr, ParseError, Parser},
+        parser::{list_from_vec, list, num, bol, bi, Atom, BuiltIn, DoVariable, Expr, ParseError, Parser},
         scanner::ScanError,
     };
 
@@ -340,25 +373,6 @@ mod tests {
         }};
     }
 
-    macro_rules! list {
-        ($($exprs:expr),+) => {
-            {
-                let elems = vec![$($exprs),+];
-                let mut list = Expr::Null;
-                for e in elems.into_iter().rev() {
-                    list = Expr::Cons(Box::new(e), Box::new(list));
-                }
-                list
-            }
-        };
-    }
-
-    macro_rules! num {
-        ($n:expr) => {
-            Expr::Atom(Atom::Num($n))
-        };
-    }
-
     macro_rules! string {
         ($s:expr) => {
             Expr::Atom(Atom::String(String::from($s)))
@@ -368,18 +382,6 @@ mod tests {
     macro_rules! ident {
         ($i:expr) => {
             Expr::Atom(Atom::Ident(String::from($i)))
-        };
-    }
-
-    macro_rules! bi {
-        ($v:ident) => {
-            Expr::Atom(Atom::BuiltIn(BuiltIn::$v))
-        };
-    }
-
-    macro_rules! bol {
-        ($b:expr) => {
-            Expr::Atom(Atom::Bool($b))
         };
     }
 

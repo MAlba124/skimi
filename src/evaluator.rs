@@ -415,7 +415,7 @@ impl Evaluator {
 mod tests {
     use crate::{
         evaluator::Evaluator,
-        parser::{Atom, Expr, Parser},
+        parser::{list_from_vec, list, num, bol, Atom, Expr, Parser},
     };
 
     macro_rules! eval {
@@ -434,31 +434,6 @@ mod tests {
             let mut evaluator = Evaluator::new();
             for ex in $ex {
                 assert_eq!(evaluator.eval(parser.parse_next().unwrap()).unwrap(), ex);
-            }
-        };
-    }
-
-    macro_rules! num {
-        ($n:expr) => {
-            Expr::Atom(Atom::Num($n))
-        };
-    }
-
-    macro_rules! bol {
-        ($b:expr) => {
-            Expr::Atom(Atom::Bool($b))
-        };
-    }
-
-    macro_rules! list {
-        ($($exprs:expr),+) => {
-            {
-                let elems = vec![$($exprs),+];
-                let mut list = Expr::Null;
-                for e in elems.into_iter().rev() {
-                    list = Expr::Cons(Box::new(e), Box::new(list));
-                }
-                list
             }
         };
     }
