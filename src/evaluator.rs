@@ -28,8 +28,17 @@ impl Error for EvalError {
 }
 
 fn get_car(cell: &Expr) -> Result<Expr, EvalError> {
+    // println!("get_car :: {cell:?}");
     match cell {
         Expr::Cons(car, _) => Ok(*car.clone()),
+        _ => Err(EvalError::NotACell),
+    }
+}
+
+fn get_cdr(cell: &Expr) -> Result<Expr, EvalError> {
+    // println!("get_cdr :: {cell:?}");
+    match cell {
+        Expr::Cons(_, cdr) => Ok(*cdr.clone()),
         _ => Err(EvalError::NotACell),
     }
 }
@@ -276,6 +285,8 @@ impl Evaluator {
                 BuiltIn::Else => Ok(Expr::Atom(Atom::Bool(true))),
                 BuiltIn::Display => self.display(cdr),
                 BuiltIn::Set => self.set(cdr),
+                BuiltIn::Car => get_car(&self.eval(cdr)?),
+                BuiltIn::Cdr => get_cdr(&self.eval(cdr)?),
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();
@@ -321,6 +332,7 @@ impl Evaluator {
                     Ok(Expr::Null)
                 }
             }
+            Expr::Quoted(e) => Ok(*e),
             _ => {
                 let last = self.eval(cdr)?;
                 if last == Expr::Null {
@@ -438,6 +450,19 @@ mod tests {
         };
     }
 
+    macro_rules! list {
+        ($($exprs:expr),+) => {
+            {
+                let elems = vec![$($exprs),+];
+                let mut list = Expr::Null;
+                for e in elems.into_iter().rev() {
+                    list = Expr::Cons(Box::new(e), Box::new(list));
+                }
+                list
+            }
+        };
+    }
+
     #[test]
     fn arith() {
         eval!("(+ 1 2)", num!(1 + 2));
@@ -540,5 +565,17 @@ mod tests {
     fn modulo() {
         eval!("(% 8 4 2)", num!(8 % 4 % 2));
         eval!("(% 12834 23)", num!(12834 % 23));
+    }
+
+    #[test]
+    fn car() {
+        eval!("(car '(1 2 3))", num!(1));
+        eval!("(car '(3 2 1))", num!(3));
+    }
+
+    #[test]
+    fn cdr() {
+        eval!("(cdr '(1 2 3))", list![num!(2), num!(3)]);
+        eval!("(cdr '(3 2 1))", list![num!(2), num!(1)]);
     }
 }

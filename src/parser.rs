@@ -17,6 +17,8 @@ pub enum BuiltIn {
     Modulo,
     Display,
     Set,
+    Car,
+    Cdr,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,7 +112,7 @@ pub struct Parser<'a> {
 /// <number>      ::= '-'?[0-9]+
 /// <ident>       ::= [a-zA-Z][a-zA-Z0-9-]*
 /// <string>      ::= '"' char '"'
-/// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%' | 'display' | 'newline'
+/// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%' | 'display' | 'newline' | 'set!' | 'car' | cdr
 /// <bool>        ::= '#t' | '#f'
 /// <list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> | <do> ')'
 /// <lambda       ::= 'lambda' '(' <ident>* ')' <expr>
@@ -143,6 +145,8 @@ impl<'a> Parser<'a> {
                 "else" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Else))),
                 "display" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Display))),
                 "set!" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Set))),
+                "car" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Car))),
+                "cdr" => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Cdr))),
                 _ => Ok(Expr::Atom(Atom::Ident(i))),
             },
             Token::Minus => Ok(Expr::Atom(Atom::BuiltIn(BuiltIn::Minus))),
@@ -539,5 +543,15 @@ mod tests {
     #[test]
     fn quoted() {
         parse!("'(1 2 3)", vec![Expr::Quoted(Box::new(list![num!(1), num!(2), num!(3)]))]);
+    }
+
+    #[test]
+    fn car() {
+        parse!("car", vec![bi!(Car)]);
+    }
+
+    #[test]
+    fn cdr() {
+        parse!("cdr", vec![bi!(Cdr)]);
     }
 }
