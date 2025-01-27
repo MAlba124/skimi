@@ -42,11 +42,8 @@ macro_rules! bi {
 pub(crate) use list_from_vec;
 #[cfg(test)]
 pub(crate) use list;
-#[cfg(test)]
 pub(crate) use num;
-#[cfg(test)]
 pub(crate) use bol;
-#[cfg(test)]
 pub(crate) use bi;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
