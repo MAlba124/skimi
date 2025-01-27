@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error};
 
-use crate::parser::{Atom, BuiltIn, DoVariable, Expr};
+use crate::parser::{list_from_vec, Atom, BuiltIn, DoVariable, Expr};
 
 #[derive(Debug)]
 pub enum EvalError {
@@ -253,10 +253,20 @@ impl Evaluator {
         Ok(Expr::Null)
     }
 
+    fn cons(&mut self, args: Expr) -> Result<Expr, EvalError> {
+        let Expr::Cons(car, cdr) = args else {
+            todo!();
+        };
+
+        let res = Expr::Cons(Box::new(self.eval(*car)?), Box::new(self.eval(*cdr)?));
+
+        Ok(res)
+    }
+
     fn eval_cons(&mut self, car: Expr, cdr: Expr) -> Result<Expr, EvalError> {
         let r = self.eval(car)?;
         match r {
-            Expr::Cons(_, _) => todo!(),
+            Expr::Cons(_, _) => Ok(r),
             Expr::Atom(Atom::BuiltIn(ref bi)) => match bi {
                 BuiltIn::Plus => Ok(Expr::Atom(Atom::Num(
                     self.extract_numbers(cdr)?.iter().sum(),
@@ -287,6 +297,7 @@ impl Evaluator {
                 BuiltIn::Set => self.set(cdr),
                 BuiltIn::Car => get_car(&self.eval(cdr)?),
                 BuiltIn::Cdr => get_cdr(&self.eval(cdr)?),
+                BuiltIn::Cons => self.cons(cdr),
             },
             Expr::Lambda(var_names, body) => {
                 let mut var_values = Vec::new();

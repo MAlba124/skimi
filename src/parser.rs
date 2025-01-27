@@ -63,6 +63,7 @@ pub enum BuiltIn {
     Set,
     Car,
     Cdr,
+    Cons,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,7 +157,8 @@ pub struct Parser<'a> {
 /// <number>      ::= '-'?[0-9]+
 /// <ident>       ::= [a-zA-Z][a-zA-Z0-9-]*
 /// <string>      ::= '"' char '"'
-/// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%' | 'display' | 'newline' | 'set!' | 'car' | cdr
+/// <builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%' | 'display'
+///                   | 'newline' | 'set!' | 'car' | cdr
 /// <bool>        ::= '#t' | '#f'
 /// <list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> | <do> ')'
 /// <lambda       ::= 'lambda' '(' <ident>* ')' <expr>
@@ -192,6 +194,7 @@ impl<'a> Parser<'a> {
                 "set!" => Ok(bi!(Set)),
                 "car" => Ok(bi!(Car)),
                 "cdr" => Ok(bi!(Cdr)),
+                "cons" => Ok(bi!(Cons)),
                 _ => Ok(Expr::Atom(Atom::Ident(i))),
             },
             Token::Minus => Ok(bi!(Minus)),
@@ -553,5 +556,10 @@ mod tests {
     #[test]
     fn cdr() {
         parse!("cdr", vec![bi!(Cdr)]);
+    }
+
+    #[test]
+    fn cons() {
+        parse!("cons", vec![bi!(Cons)]);
     }
 }
