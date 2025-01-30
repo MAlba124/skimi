@@ -35,6 +35,7 @@ pub enum ScanError {
     InvalidPercent,
     InvalidTimes,
     InvalidSlash,
+    ExpectedTerminal,
 }
 
 impl ScanError {
@@ -163,15 +164,21 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn take_plus(&mut self) -> Result<Token, ScanError> {
-        let Ok(peek) = self.peek2() else {
-            self.pos += 1;
-            return Ok(Token::Plus);
-        };
-        if !matches!(peek, ' ' | '\n' | '(' | ')') {
-            return Err(ScanError::InvalidToken);
+    fn peek_terminal(&self) -> Result<(), ScanError> {
+        match self.peek() {
+            Ok(peek) => match matches!(peek, ' ' |  '\n' | '(' | ')') {
+                true => Ok(()),
+                false => Err(ScanError::ExpectedTerminal),
+            },
+            Err(_) => Ok(()),
         }
-        self.pos += 1;
+    }
+
+    fn take_plus(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '+' {
+            unreachable!();
+        }
+        self.peek_terminal()?;
         Ok(Token::Plus)
     }
 
@@ -185,12 +192,7 @@ impl<'a> Scanner<'a> {
             'f' => Token::Bool(false),
             _ => return Err(ScanError::NotABool(next)),
         };
-        if let Ok(peek) = self.peek() {
-            match peek {
-                ' ' | '\n' | '(' | ')' => (),
-                _ => todo!("illegal boolean"),
-            }
-        }
+        self.peek_terminal()?;
         Ok(ret)
     }
 
@@ -198,12 +200,7 @@ impl<'a> Scanner<'a> {
         if self.next()? != '=' {
             unreachable!();
         }
-        if let Ok(peek) = self.peek() {
-            match peek {
-                ' ' | '\n' | '(' | ')' => (),
-                _ => todo!("illegal thing"),
-            }
-        }
+        self.peek_terminal()?;
         Ok(Token::Eq)
     }
 
@@ -216,13 +213,8 @@ impl<'a> Scanner<'a> {
                 ' ' | '\n' | '(' | ')' => Ok(Token::Less),
                 '=' => {
                     let _ = self.next()?;
-                    match self.peek() {
-                        Ok(peek) => match peek {
-                            ' ' | '\n' | '(' | ')' => Ok(Token::LessOrEq),
-                            _ => Err(ScanError::InvalidLess),
-                        },
-                        _ => Ok(Token::LessOrEq),
-                    }
+                    self.peek_terminal()?;
+                    Ok(Token::LessOrEq)
                 }
                 _ => Err(ScanError::InvalidLess),
             },
@@ -239,13 +231,8 @@ impl<'a> Scanner<'a> {
                 ' ' | '\n' | '(' | ')' => Ok(Token::Greater),
                 '=' => {
                     let _ = self.next()?;
-                    match self.peek() {
-                        Ok(peek) => match peek {
-                            ' ' | '\n' | '(' | ')' => Ok(Token::GreaterOrEq),
-                            _ => Err(ScanError::InvalidGreater),
-                        },
-                        _ => Ok(Token::GreaterOrEq),
-                    }
+                    self.peek_terminal()?;
+                    Ok(Token::GreaterOrEq)
                 }
                 _ => Err(ScanError::InvalidGreater),
             },
@@ -257,13 +244,8 @@ impl<'a> Scanner<'a> {
         if self.next()? != '%' {
             unreachable!();
         }
-        match self.peek() {
-            Ok(peek) => match peek {
-                ' ' | '\n' | '(' | ')' => Ok(Token::Percent),
-                _ => Err(ScanError::InvalidPercent),
-            },
-            _ => Ok(Token::Percent),
-        }
+        self.peek_terminal()?;
+        Ok(Token::Percent)
     }
 
     fn take_tick(&mut self) -> Result<Token, ScanError> {
@@ -277,26 +259,16 @@ impl<'a> Scanner<'a> {
         if self.next()? != '*' {
             unreachable!();
         }
-        match self.peek() {
-            Ok(peek) => match peek {
-                ' ' | '\n' | '(' | ')' => Ok(Token::Times),
-                _ => Err(ScanError::InvalidTimes),
-            },
-            _ => Ok(Token::Times),
-        }
+        self.peek_terminal()?;
+        Ok(Token::Times)
     }
 
     fn take_slash(&mut self) -> Result<Token, ScanError> {
         if self.next()? != '/' {
             unreachable!();
         }
-        match self.peek() {
-            Ok(peek) => match peek {
-                ' ' | '\n' | '(' | ')' => Ok(Token::Slash),
-                _ => Err(ScanError::InvalidSlash),
-            },
-            _ => Ok(Token::Slash),
-        }
+        self.peek_terminal()?;
+        Ok(Token::Slash)
     }
 
     pub fn next_token(&mut self) -> Result<Token, ScanError> {
