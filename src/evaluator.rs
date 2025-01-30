@@ -225,15 +225,7 @@ impl Evaluator {
 
     fn display(&mut self, arg: Expr) -> Result<Expr, EvalError> {
         let r = self.eval(arg)?;
-        match r {
-            Expr::Cons(car, cdr) => {
-                if *cdr != Expr::Null {
-                    return Err(EvalError::UnexpectedArgument(*cdr));
-                }
-                print!("{car}");
-            }
-            _ => print!("{r}"),
-        }
+        print!("{r}");
         Ok(Expr::Null)
     }
 

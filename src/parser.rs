@@ -110,7 +110,23 @@ impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::Atom(atom) => write!(f, "{atom}"),
-            Expr::Cons(car, cdr) => write!(f, "{car} {cdr}"),
+            Expr::Cons(car, cdr) => {
+                let mut car = car.clone();
+                let mut cdr = cdr.clone();
+                write!(f, "(")?;
+                while *car != Expr::Null {
+                    write!(f, "{car}")?;
+                    match *cdr {
+                        Expr::Cons(ncar, ncdr) => {
+                            write!(f, " ")?;
+                            car = ncar;
+                            cdr = ncdr;
+                        }
+                        _ => car = cdr.clone(),
+                    }
+                }
+                write!(f, ")")
+            }
             Expr::Lambda(_, _) => write!(f, "Lambda"),
             Expr::If(_, _, _) => write!(f, "If"),
             Expr::Null => write!(f, "Null"),
