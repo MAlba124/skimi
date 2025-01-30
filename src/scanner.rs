@@ -167,7 +167,7 @@ impl<'a> Scanner<'a> {
 
     fn peek_terminal(&self) -> Result<(), ScanError> {
         match self.peek() {
-            Ok(peek) => match matches!(peek, ' ' |  '\n' | '(' | ')') {
+            Ok(peek) => match matches!(peek, ' ' | '\n' | '(' | ')') {
                 true => Ok(()),
                 false => Err(ScanError::ExpectedTerminal),
             },
