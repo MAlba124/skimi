@@ -36,6 +36,7 @@ pub enum ScanError {
     InvalidTimes,
     InvalidSlash,
     ExpectedTerminal,
+    InvalidString,
 }
 
 impl ScanError {
@@ -142,11 +143,11 @@ impl<'a> Scanner<'a> {
         let mut res = String::new();
         while let Ok(next) = self.next() {
             match next {
-                '"' => break,
+                '"' => return Ok(Token::String(res)),
                 _ => res.push(next),
             }
         }
-        Ok(Token::String(res))
+        Err(ScanError::InvalidString)
     }
 
     fn take_minus(&mut self) -> Result<Token, ScanError> {
