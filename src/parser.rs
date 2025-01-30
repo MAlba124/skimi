@@ -3,15 +3,13 @@ use std::error::Error;
 use crate::scanner::{ScanError, Scanner, Token};
 
 macro_rules! list_from_vec {
-    ($vec:expr) => {
-        {
-            let mut list = Expr::Null;
-            for e in $vec.into_iter().rev() {
-                list = Expr::Cons(Box::new(e), Box::new(list));
-            }
-            list
+    ($vec:expr) => {{
+        let mut list = Expr::Null;
+        for e in $vec.into_iter().rev() {
+            list = Expr::Cons(Box::new(e), Box::new(list));
         }
-    };
+        list
+    }};
 }
 
 #[cfg(test)]
@@ -39,12 +37,12 @@ macro_rules! bi {
     };
 }
 
-pub(crate) use list_from_vec;
+pub(crate) use bi;
+pub(crate) use bol;
 #[cfg(test)]
 pub(crate) use list;
+pub(crate) use list_from_vec;
 pub(crate) use num;
-pub(crate) use bol;
-pub(crate) use bi;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BuiltIn {
@@ -64,6 +62,8 @@ pub enum BuiltIn {
     Car,
     Cdr,
     Cons,
+    Times,
+    Slash,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -207,6 +207,8 @@ impl<'a> Parser<'a> {
             Token::LessOrEq => Ok(bi!(LessOrEq)),
             Token::GreaterOrEq => Ok(bi!(GreaterOrEq)),
             Token::Percent => Ok(bi!(Modulo)),
+            Token::Times => Ok(bi!(Times)),
+            Token::Slash => Ok(bi!(Slash)),
             _ => Err(ParseError::UnexpectedToken(next)),
         }
     }
@@ -311,7 +313,11 @@ impl<'a> Parser<'a> {
             body.push(self.expr()?);
         }
 
-        Ok(Expr::Do(vars, Box::new(test), Box::new(list_from_vec!(body))))
+        Ok(Expr::Do(
+            vars,
+            Box::new(test),
+            Box::new(list_from_vec!(body)),
+        ))
     }
 
     fn quote(&mut self) -> Result<Expr, ParseError> {
@@ -331,6 +337,8 @@ impl<'a> Parser<'a> {
             | Token::Less
             | Token::GreaterOrEq
             | Token::LessOrEq
+            | Token::Times
+            | Token::Slash
             | Token::Percent => self.atom(),
             Token::Ident(i) => match i.as_str() {
                 "lambda" => self.lambda(),
@@ -354,7 +362,9 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        parser::{list_from_vec, list, num, bol, bi, Atom, BuiltIn, DoVariable, Expr, ParseError, Parser},
+        parser::{
+            bi, bol, list, list_from_vec, num, Atom, BuiltIn, DoVariable, Expr, ParseError, Parser,
+        },
         scanner::ScanError,
     };
 
@@ -507,17 +517,10 @@ mod tests {
             list![bi!(Plus), ident!("x"), num!(10)],
             Expr::Cons(
                 Box::new(bi!(Plus)),
-                Box::new(
-                    Expr::Cons(
-                        Box::new(ident!("x")),
-                        Box::new(
-                            Expr::Cons(
-                                Box::new(num!(10)),
-                                Box::new(Expr::Null),
-                            )
-                        )
-                    )
-                )
+                Box::new(Expr::Cons(
+                    Box::new(ident!("x")),
+                    Box::new(Expr::Cons(Box::new(num!(10)), Box::new(Expr::Null),))
+                ))
             )
         );
     }
@@ -532,7 +535,10 @@ mod tests {
                     init: num!(0),
                     step: list![bi!(Plus), ident!("x"), num!(1)]
                 }],
-                Box::new(list![list![bi!(Greater), ident!("x"), num!(10)], ident!("x")]),
+                Box::new(list![
+                    list![bi!(Greater), ident!("x"), num!(10)],
+                    ident!("x")
+                ]),
                 Box::new(list![list![bi!(Display), ident!("x")], list![bi!(Newline)]]),
             )]]
         );
@@ -545,7 +551,10 @@ mod tests {
 
     #[test]
     fn quoted() {
-        parse!("'(1 2 3)", vec![Expr::Quoted(Box::new(list![num!(1), num!(2), num!(3)]))]);
+        parse!(
+            "'(1 2 3)",
+            vec![Expr::Quoted(Box::new(list![num!(1), num!(2), num!(3)]))]
+        );
     }
 
     #[test]
@@ -561,5 +570,15 @@ mod tests {
     #[test]
     fn cons() {
         parse!("cons", vec![bi!(Cons)]);
+    }
+
+    #[test]
+    fn times() {
+        parse!("*", vec![bi!(Times)]);
+    }
+
+    #[test]
+    fn slash() {
+        parse!("/", vec![bi!(Slash)]);
     }
 }

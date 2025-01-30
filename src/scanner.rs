@@ -17,6 +17,8 @@ pub enum Token {
     Bool(bool),
     Percent,
     Tick,
+    Times,
+    Slash,
 }
 
 #[derive(Debug)]
@@ -31,6 +33,8 @@ pub enum ScanError {
     InvalidLess,
     InvalidGreater,
     InvalidPercent,
+    InvalidTimes,
+    InvalidSlash,
 }
 
 impl ScanError {
@@ -269,6 +273,32 @@ impl<'a> Scanner<'a> {
         Ok(Token::Tick)
     }
 
+    fn take_times(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '*' {
+            unreachable!();
+        }
+        match self.peek() {
+            Ok(peek) => match peek {
+                ' ' | '\n' | '(' | ')' => Ok(Token::Times),
+                _ => Err(ScanError::InvalidTimes),
+            },
+            _ => Ok(Token::Times),
+        }
+    }
+
+    fn take_slash(&mut self) -> Result<Token, ScanError> {
+        if self.next()? != '/' {
+            unreachable!();
+        }
+        match self.peek() {
+            Ok(peek) => match peek {
+                ' ' | '\n' | '(' | ')' => Ok(Token::Slash),
+                _ => Err(ScanError::InvalidSlash),
+            },
+            _ => Ok(Token::Slash),
+        }
+    }
+
     pub fn next_token(&mut self) -> Result<Token, ScanError> {
         if let Some(scanned_next) = self.scanned.take() {
             return Ok(scanned_next);
@@ -303,6 +333,8 @@ impl<'a> Scanner<'a> {
                 '>' => self.take_greater(),
                 '%' => self.take_percent(),
                 '\'' => self.take_tick(),
+                '*' => self.take_times(),
+                '/' => self.take_slash(),
                 _ => Err(ScanError::Eof),
             };
         }
@@ -462,6 +494,16 @@ mod tests {
     #[test]
     fn tick() {
         scan_eq_vec!("'", vec![Token::Tick]);
+    }
+
+    #[test]
+    fn times() {
+        scan_eq_vec!("*", vec![Token::Times]);
+    }
+
+    #[test]
+    fn slash() {
+        scan_eq_vec!("/", vec![Token::Slash]);
     }
 
     #[test]
