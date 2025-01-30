@@ -74,6 +74,27 @@ This will output:
 Loop finished
 ```
 
+## Grammar
+
+```bnf
+<expr>        ::= <atom> | <list> | <comment>
+<atom>        ::= <number> | <ident> | <string> | <builtin> | <bool>
+<number>      ::= '-'?[0-9]+
+<ident>       ::= [a-zA-Z][a-zA-Z0-9-]*
+<string>      ::= '"' char '"'
+<builtin>     ::= '+' | '-' | 'define' | '>' | '<' | '>=' | '<=' | '%' | 'display'
+                  | 'newline' | 'set!' | 'car' | cdr
+<bool>        ::= '#t' | '#f'
+<list>        ::= '(' 'lambda' | <expr>* | <if> | <cond> | <do> ')'
+<lambda       ::= 'lambda' '(' <ident>* ')' <expr>
+<if>          ::= 'if' <expr> <expr> [<expr>]
+<cond>        ::= 'cond' <cond-clause>*
+<cond-clause> ::= '(' <expr> <expr> ')' | '(' 'else' <expr> ')'
+<do>          ::= 'do' '(' <do-variable> ')' '(' <expr>* ')' <expr>*
+<do-variable> ::= '(' <ident> <expr> <expr> ')'
+<comment>     ::= ';' <EOL>
+```
+
 #### References
 
 - [https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs](https://github.com/rust-bakery/nom/blob/main/examples/s_expression.rs)
