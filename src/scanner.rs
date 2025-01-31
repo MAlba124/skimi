@@ -42,7 +42,7 @@ pub enum ScanErrorReason {
 #[derive(Debug)]
 pub struct ScanError {
     pub reason: ScanErrorReason,
-    pub line: Option<String>,
+    pub line: String,
     pub col: usize,
     pub line_num: usize,
 }
@@ -55,7 +55,10 @@ impl ScanError {
 
 impl std::fmt::Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        let line_num_str = self.line_num.to_string();
+        write!(f, "Error: :{}:{}\n", self.line_num, self.col)?;
+        write!(f, " {} | {}\n", line_num_str, self.line)?;
+        write!(f, "{}^ {:?}" , " ".repeat(4 + line_num_str.len() + self.col - 1), self.reason)
     }
 }
 
@@ -67,11 +70,14 @@ impl Error for ScanError {
 
 macro_rules! scan_err {
     ($scanner: expr, $reason: expr) => {
-        ScanError {
-            reason: $reason,
-            line: None,
-            col: 0,
-            line_num: 0,
+        {
+            let (line, line_num, col_num) = $scanner.get_current_line();
+            ScanError {
+                reason: $reason,
+                line: line,
+                col: col_num,
+                line_num,
+            }
         }
     };
 }
@@ -120,9 +126,36 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn get_current_line(&self) -> String {
+    // -> (line, line_num, col_num)
+    fn get_current_line(&self) -> (String, usize, usize) {
         let mut line = String::new();
-        line
+        let mut line_num = 1;
+        let mut col_num = self.pos + 1;
+        let mut pos = self.pos.min(self.chars.len() - 1);
+        while pos > 0 && self.chars[pos] != '\n' {
+            pos -= 1;
+        }
+
+        if pos == 0 && self.chars[pos] == '\n' {
+            pos += 1;
+        }
+
+        col_num -= pos;
+
+        let mut line_pos = 0;
+        while line_pos < pos {
+            if self.chars[line_pos] == '\n' {
+                line_num += 1;
+            }
+            line_pos += 1;
+        }
+
+        while pos < self.chars.len() && self.chars[pos] != '\n' {
+            line.push(self.chars[pos]);
+            pos += 1;
+        }
+
+        (line, line_num, col_num)
     }
 
     fn take_identifier(&mut self) -> Result<Token, ScanError> {

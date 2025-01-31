@@ -146,7 +146,10 @@ pub enum ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            ParseError::Scan(scan_error) => write!(f, "{scan_error}"),
+            _ => write!(f, "{self:?}"),
+        }
     }
 }
 
@@ -232,7 +235,7 @@ impl<'a> Parser<'a> {
     fn list(&mut self) -> Result<Expr, ParseError> {
         self.take(Token::OPar)?;
         let mut exprs = Vec::new();
-        while self.scanner.peek_token().unwrap() != Token::CPar {
+        while self.scanner.peek_token()? != Token::CPar {
             exprs.push(self.expr()?);
         }
         self.take(Token::CPar)?;

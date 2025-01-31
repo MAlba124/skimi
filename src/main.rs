@@ -21,16 +21,23 @@ fn repl() {
         let chars = buffer.chars().collect::<Vec<char>>();
         // println!("{:?}", toks);
         let mut parser = Parser::new(&chars);
-        while let Ok(expr) = parser.parse_next() {
-            // println!("{expr:?}");
-            let res = e.eval(expr);
-            match res {
-                Ok(v) => {
-                    if v != Expr::Null {
-                        println!("{v}");
+        loop {
+            match parser.parse_next() {
+                Ok(expr) => {
+                    let res = e.eval(expr);
+                    match res {
+                        Ok(v) => {
+                            if v != Expr::Null {
+                                println!("{v}");
+                            }
+                        }
+                        Err(err) => eprintln!("{err}"),
                     }
                 }
-                Err(err) => eprintln!("{err}"),
+                Err(err) => {
+                    eprintln!("{err}");
+                    break;
+                }
             }
         }
     }
