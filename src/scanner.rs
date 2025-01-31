@@ -22,7 +22,7 @@ pub enum Token {
 }
 
 #[derive(Debug)]
-pub enum ScanError {
+pub enum ScanErrorReason {
     Eof,
     NumConversion,
     InvalidNumChar(char),
@@ -36,12 +36,20 @@ pub enum ScanError {
     InvalidTimes,
     InvalidSlash,
     ExpectedTerminal,
-    InvalidString,
+    UnclosedString,
+}
+
+#[derive(Debug)]
+pub struct ScanError {
+    pub reason: ScanErrorReason,
+    pub line: Option<String>,
+    pub col: usize,
+    pub line_num: usize,
 }
 
 impl ScanError {
     pub fn is_eof(&self) -> bool {
-        matches!(self, Self::Eof)
+        matches!(self.reason, ScanErrorReason::Eof)
     }
 }
 
@@ -55,6 +63,17 @@ impl Error for ScanError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
+}
+
+macro_rules! scan_err {
+    ($scanner: expr, $reason: expr) => {
+        ScanError {
+            reason: $reason,
+            line: None,
+            col: 0,
+            line_num: 0,
+        }
+    };
 }
 
 pub struct Scanner<'a> {
@@ -80,7 +99,7 @@ impl<'a> Scanner<'a> {
         if !self.is_at_eof() {
             Ok(self.chars[self.pos])
         } else {
-            Err(ScanError::Eof)
+            Err(scan_err!(self, ScanErrorReason::Eof))
         }
     }
 
@@ -88,7 +107,7 @@ impl<'a> Scanner<'a> {
         if self.pos + 1 < self.chars.len() {
             Ok(self.chars[self.pos + 1])
         } else {
-            Err(ScanError::Eof)
+            Err(scan_err!(self, ScanErrorReason::Eof))
         }
     }
 
@@ -97,8 +116,13 @@ impl<'a> Scanner<'a> {
             self.pos += 1;
             Ok(self.chars[self.pos - 1])
         } else {
-            Err(ScanError::Eof)
+            Err(scan_err!(self, ScanErrorReason::Eof))
         }
+    }
+
+    fn get_current_line(&self) -> String {
+        let mut line = String::new();
+        line
     }
 
     fn take_identifier(&mut self) -> Result<Token, ScanError> {
@@ -107,7 +131,7 @@ impl<'a> Scanner<'a> {
             match next {
                 ' ' | '\n' | '(' | ')' => break,
                 'a'..='z' | 'A'..='Z' | '-' | '0'..='9' | '!' => ident.push(self.next()?),
-                _ => return Err(ScanError::InvalidIdentChar(next)),
+                _ => return Err(scan_err!(self, ScanErrorReason::InvalidIdentChar(next))),
             }
         }
         Ok(Token::Ident(ident))
@@ -127,13 +151,13 @@ impl<'a> Scanner<'a> {
             match next {
                 ' ' | '\n' | '(' | ')' => break,
                 '0'..='9' => num_str.push(self.next()?),
-                _ => return Err(ScanError::InvalidNumChar(next)),
+                _ => return Err(scan_err!(self, ScanErrorReason::InvalidNumChar(next))),
             }
         }
         Ok(Token::Num(
             num_str
                 .parse::<i64>()
-                .map_err(|_| ScanError::NumConversion)?,
+                .map_err(|_| scan_err!(self, ScanErrorReason::NumConversion))?,
         ))
     }
 
@@ -147,7 +171,7 @@ impl<'a> Scanner<'a> {
                 _ => res.push(next),
             }
         }
-        Err(ScanError::InvalidString)
+        Err(scan_err!(self, ScanErrorReason::UnclosedString))
     }
 
     fn take_minus(&mut self) -> Result<Token, ScanError> {
@@ -161,7 +185,7 @@ impl<'a> Scanner<'a> {
             self.pos += 1;
             Ok(Token::Minus)
         } else {
-            Err(ScanError::InvalidToken)
+            Err(scan_err!(self, ScanErrorReason::InvalidToken))
         }
     }
 
@@ -169,7 +193,7 @@ impl<'a> Scanner<'a> {
         match self.peek() {
             Ok(peek) => match matches!(peek, ' ' | '\n' | '(' | ')') {
                 true => Ok(()),
-                false => Err(ScanError::ExpectedTerminal),
+                false => Err(scan_err!(self, ScanErrorReason::ExpectedTerminal)),
             },
             Err(_) => Ok(()),
         }
@@ -191,7 +215,7 @@ impl<'a> Scanner<'a> {
         let ret = match next {
             't' => Token::Bool(true),
             'f' => Token::Bool(false),
-            _ => return Err(ScanError::NotABool(next)),
+            _ => return Err(scan_err!(self, ScanErrorReason::NotABool(next))),
         };
         self.peek_terminal()?;
         Ok(ret)
@@ -217,7 +241,7 @@ impl<'a> Scanner<'a> {
                     self.peek_terminal()?;
                     Ok(Token::LessOrEq)
                 }
-                _ => Err(ScanError::InvalidLess),
+                _ => Err(scan_err!(self, ScanErrorReason::InvalidLess)),
             },
             _ => Ok(Token::Less),
         }
@@ -235,7 +259,7 @@ impl<'a> Scanner<'a> {
                     self.peek_terminal()?;
                     Ok(Token::GreaterOrEq)
                 }
-                _ => Err(ScanError::InvalidGreater),
+                _ => Err(scan_err!(self, ScanErrorReason::InvalidGreater)),
             },
             _ => Ok(Token::Greater),
         }
@@ -308,7 +332,7 @@ impl<'a> Scanner<'a> {
                 '\'' => self.take_tick(),
                 '*' => self.take_times(),
                 '/' => self.take_slash(),
-                _ => Err(ScanError::Eof),
+                _ => Err(scan_err!(self, ScanErrorReason::Eof)),
             };
         }
     }
