@@ -57,9 +57,18 @@ impl ScanError {
 impl std::fmt::Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let line_num_str = self.line_num.to_string();
-        write!(f, "\x1b[31mError\x1b[0m: {}:{}:{}\n", self.file_name, self.line_num, self.col)?;
+        write!(
+            f,
+            "\x1b[31mError\x1b[0m: {}:{}:{}\n",
+            self.file_name, self.line_num, self.col
+        )?;
         write!(f, " {} | {}\n", line_num_str, self.line)?;
-        write!(f, "{}^ {:?}" , " ".repeat(4 + line_num_str.len() + self.col - 1), self.reason)
+        write!(
+            f,
+            "{}^ {:?}",
+            " ".repeat(4 + line_num_str.len() + self.col - 1),
+            self.reason
+        )
     }
 }
 
@@ -70,18 +79,16 @@ impl Error for ScanError {
 }
 
 macro_rules! scan_err {
-    ($scanner: expr, $reason: expr) => {
-        {
-            let (line, line_num, col_num) = $scanner.get_current_line();
-            ScanError {
-                reason: $reason,
-                line: line,
-                col: col_num,
-                line_num,
-                file_name: $scanner.file_name.clone(),
-            }
+    ($scanner: expr, $reason: expr) => {{
+        let (line, line_num, col_num) = $scanner.get_current_line();
+        ScanError {
+            reason: $reason,
+            line: line,
+            col: col_num,
+            line_num,
+            file_name: $scanner.file_name.clone(),
         }
-    };
+    }};
 }
 
 pub struct Scanner<'a> {
@@ -191,11 +198,9 @@ impl<'a> Scanner<'a> {
                 _ => return Err(scan_err!(self, ScanErrorReason::InvalidNumChar(next))),
             }
         }
-        Ok(Token::Num(
-            num_str
-                .parse::<i64>()
-                .map_err(|_| scan_err!(self, ScanErrorReason::NumConversion))?,
-        ))
+        Ok(Token::Num(num_str.parse::<i64>().map_err(|_| {
+            scan_err!(self, ScanErrorReason::NumConversion)
+        })?))
     }
 
     // TODO: handle escaped characters
