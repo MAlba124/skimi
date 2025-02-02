@@ -248,6 +248,14 @@ impl<'a> Parser<'a> {
             exprs.push(self.expr()?);
         }
         self.take(Token::CPar)?;
+
+        if exprs.len() == 1 {
+            match exprs[0] {
+                Expr::Lambda(_, _) => return Ok(exprs[0].clone()),
+                _ => (),
+            }
+        }
+
         Ok(list_from_vec!(exprs))
     }
 
@@ -389,11 +397,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        parser::{
-            bi, bol, list, list_from_vec, num, Atom, BuiltIn, DoVariable, Expr, Parser,
-        },
-    };
+    use crate:: parser::{bi, bol, list, list_from_vec, num, Atom, BuiltIn, DoVariable, Expr, Parser,};
 
     macro_rules! parse {
         ($in:expr, $ex:expr) => {{

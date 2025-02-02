@@ -156,12 +156,7 @@ impl Evaluator {
         let Expr::Atom(Atom::Ident(ident)) = *ident else {
             return Err(EvalError::NotAnIdent);
         };
-        let mut car = get_car(&value)?;
-        if let Expr::Cons(ref maybe, _) = car {
-            if let Expr::Lambda(_, _) = **maybe {
-                car = *maybe.clone();
-            }
-        }
+        let car = get_car(&value)?;
         self.push_var(ident, car)?;
         Ok(Expr::Null)
     }
@@ -314,7 +309,7 @@ impl Evaluator {
                 }
 
                 if var_values.len() != var_names.len() {
-                    panic!("TODO: lambda takes _ arguments, got _");
+                    panic!("TODO: lambda takes {} arguments, got {}", var_names.len(), var_values.len());
                 }
 
                 self.push_scope();

@@ -24,6 +24,7 @@ fn repl() {
         loop {
             match parser.parse_next() {
                 Ok(expr) => {
+                    println!("{expr:?}");
                     let res = e.eval(expr);
                     match res {
                         Ok(v) => {
