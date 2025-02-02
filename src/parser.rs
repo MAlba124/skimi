@@ -474,14 +474,14 @@ mod tests {
     fn lambda() {
         parse!(
             "(lambda () 10)",
-            vec![list![Expr::Lambda(Vec::new(), Box::new(list!(num!(10))))]]
+            vec![Expr::Lambda(Vec::new(), Box::new(list!(num!(10))))]
         );
         parse!(
             "(lambda (x) (+ x 1))",
-            vec![list![Expr::Lambda(
+            vec![Expr::Lambda(
                 vec![String::from("x")],
                 Box::new(list!(list!(bi!(Plus), ident!("x"), num!(1))))
-            )]]
+            )]
         );
     }
 
