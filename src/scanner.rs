@@ -45,6 +45,7 @@ pub struct ScanError {
     pub line: String,
     pub col: usize,
     pub line_num: usize,
+    pub file_name: String,
 }
 
 impl ScanError {
@@ -56,7 +57,7 @@ impl ScanError {
 impl std::fmt::Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let line_num_str = self.line_num.to_string();
-        write!(f, "Error: :{}:{}\n", self.line_num, self.col)?;
+        write!(f, "\x1b[31mError\x1b[0m: {}:{}:{}\n", self.file_name, self.line_num, self.col)?;
         write!(f, " {} | {}\n", line_num_str, self.line)?;
         write!(f, "{}^ {:?}" , " ".repeat(4 + line_num_str.len() + self.col - 1), self.reason)
     }
@@ -77,6 +78,7 @@ macro_rules! scan_err {
                 line: line,
                 col: col_num,
                 line_num,
+                file_name: $scanner.file_name.clone(),
             }
         }
     };
@@ -86,14 +88,16 @@ pub struct Scanner<'a> {
     chars: &'a [char],
     pos: usize,
     scanned: Option<Token>,
+    file_name: String,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(chars: &'a [char]) -> Self {
+    pub fn new(chars: &'a [char], file_name: String) -> Self {
         Self {
             chars,
             pos: 0,
             scanned: None,
+            file_name,
         }
     }
 
@@ -136,7 +140,7 @@ impl<'a> Scanner<'a> {
             pos -= 1;
         }
 
-        if pos == 0 && self.chars[pos] == '\n' {
+        if pos == 0 || self.chars[pos] == '\n' {
             pos += 1;
         }
 

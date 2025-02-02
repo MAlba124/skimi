@@ -159,6 +159,15 @@ impl Error for ParseError {
     }
 }
 
+impl ParseError {
+    pub fn is_eof(&self) -> bool {
+        match self {
+            ParseError::Scan(scan_error) => scan_error.is_eof(),
+            _ => false,
+        }
+    }
+}
+
 impl From<ScanError> for ParseError {
     fn from(value: ScanError) -> Self {
         Self::Scan(value)
@@ -188,9 +197,9 @@ pub struct Parser<'a> {
 /// <do-variable> ::= '(' <ident> <expr> <expr> ')'
 /// <comment>     ::= ';' <EOL>
 impl<'a> Parser<'a> {
-    pub fn new(src: &'a [char]) -> Parser<'a> {
+    pub fn new(src: &'a [char], file_name: String) -> Parser<'a> {
         Self {
-            scanner: Scanner::new(src),
+            scanner: Scanner::new(src, file_name),
         }
     }
 

@@ -20,7 +20,7 @@ fn repl() {
         stdin.read_line(&mut buffer).unwrap();
         let chars = buffer.chars().collect::<Vec<char>>();
         // println!("{:?}", toks);
-        let mut parser = Parser::new(&chars);
+        let mut parser = Parser::new(&chars, "stdin".to_owned());
         loop {
             match parser.parse_next() {
                 Ok(expr) => {
@@ -34,10 +34,11 @@ fn repl() {
                         Err(err) => eprintln!("{err}"),
                     }
                 }
-                Err(err) => {
+                Err(err) if !err.is_eof() => {
                     eprintln!("{err}");
                     break;
                 }
+                _ => break,
             }
         }
     }
@@ -47,10 +48,19 @@ fn evaluate_file(file: &mut File) {
     let mut code = String::new();
     file.read_to_string(&mut code).unwrap();
     let chars = code.chars().collect::<Vec<char>>();
-    let mut parser = Parser::new(&chars);
+    let mut parser = Parser::new(&chars, "TODO".to_owned());
     let mut evaluator = Evaluator::new();
-    while let Ok(expr) = parser.parse_next() {
-        let _ = evaluator.eval(expr).unwrap();
+    loop {
+        match parser.parse_next() {
+            Ok(expr) => {
+                let _ = evaluator.eval(expr).unwrap();
+            }
+            Err(err) if err.is_eof() => break,
+            Err(err) => {
+                eprintln!("{err}");
+                break;
+            }
+        }
     }
 }
 
