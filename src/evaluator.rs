@@ -1,4 +1,4 @@
-use std::{cmp::max_by, collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error};
 
 use crate::parser::{Atom, BuiltIn, DoVariable, Expr};
 
@@ -429,7 +429,7 @@ mod tests {
     macro_rules! eval {
         ($c:expr, $ex:expr) => {
             let in_ = $c.chars().collect::<Vec<char>>();
-            let mut parser = Parser::new(&in_);
+            let mut parser = Parser::new(&in_, "test".to_owned());
             let mut evaluator = Evaluator::new();
             assert_eq!(evaluator.eval(parser.parse_next().unwrap()).unwrap(), $ex);
         };
@@ -438,7 +438,7 @@ mod tests {
     macro_rules! eval_many {
         ($c:expr, $ex:expr) => {
             let in_ = $c.chars().collect::<Vec<char>>();
-            let mut parser = Parser::new(&in_);
+            let mut parser = Parser::new(&in_, "test".to_owned());
             let mut evaluator = Evaluator::new();
             for ex in $ex {
                 assert_eq!(evaluator.eval(parser.parse_next().unwrap()).unwrap(), ex);

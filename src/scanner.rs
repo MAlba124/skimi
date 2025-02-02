@@ -416,7 +416,7 @@ mod tests {
     macro_rules! scan_eq_vec {
         ($in:expr, $ex:expr) => {
             let temp = $in.chars().collect::<Vec<char>>();
-            let mut scanner = Scanner::new(&temp);
+            let mut scanner = Scanner::new(&temp, "test".to_owned());
             let mut res = Vec::new();
             while let Ok(r) = scanner.next_token() {
                 res.push(r);
@@ -549,13 +549,13 @@ mod tests {
     fn peek() {
         {
             let in_ = "+".chars().collect::<Vec<char>>();
-            let mut scanner = Scanner::new(&in_);
+            let mut scanner = Scanner::new(&in_, "test".to_owned());
             assert_eq!(scanner.peek_token().unwrap(), Token::Plus);
             assert_eq!(scanner.next_token().unwrap(), Token::Plus);
         }
         {
             let in_ = "+ 123".chars().collect::<Vec<char>>();
-            let mut scanner = Scanner::new(&in_);
+            let mut scanner = Scanner::new(&in_, "test".to_owned());
             assert_eq!(scanner.peek_token().unwrap(), Token::Plus);
             assert_eq!(scanner.next_token().unwrap(), Token::Plus);
 
@@ -565,7 +565,7 @@ mod tests {
 
         {
             let in_ = "+ 123 (".chars().collect::<Vec<char>>();
-            let mut scanner = Scanner::new(&in_);
+            let mut scanner = Scanner::new(&in_, "test".to_owned());
             assert_eq!(scanner.peek_token().unwrap(), Token::Plus);
             assert_eq!(scanner.next_token().unwrap(), Token::Plus);
 

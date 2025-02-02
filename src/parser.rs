@@ -391,20 +391,19 @@ impl<'a> Parser<'a> {
 mod tests {
     use crate::{
         parser::{
-            bi, bol, list, list_from_vec, num, Atom, BuiltIn, DoVariable, Expr, ParseError, Parser,
+            bi, bol, list, list_from_vec, num, Atom, BuiltIn, DoVariable, Expr, Parser,
         },
-        scanner::ScanError,
     };
 
     macro_rules! parse {
         ($in:expr, $ex:expr) => {{
             let in_ = $in.chars().collect::<Vec<char>>();
-            let mut parser = Parser::new(&in_);
+            let mut parser = Parser::new(&in_, "test".to_owned());
             let mut res = Vec::new();
             loop {
                 match parser.parse_next() {
                     Ok(e) => res.push(e),
-                    Err(ParseError::Scan(ScanError::Eof)) => break,
+                    Err(err) if err.is_eof() => break,
                     Err(err) => panic!("{err}"),
                 }
             }
