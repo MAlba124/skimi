@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::{cmp::max_by, collections::HashMap, error::Error};
 
 use crate::parser::{Atom, BuiltIn, DoVariable, Expr};
 
@@ -157,13 +157,10 @@ impl Evaluator {
             return Err(EvalError::NotAnIdent);
         };
         let mut car = get_car(&value)?;
-        match car {
-            Expr::Cons(ref maybe, _) => match **maybe {
-                // Lambdas are the car of a one element cell, take it out to make it easier to deal with
-                Expr::Lambda(_, _) => car = *maybe.clone(),
-                _ => (),
-            },
-            _ => (),
+        if let Expr::Cons(ref maybe, _) = car {
+            if let Expr::Lambda(_, _) = **maybe {
+                car = *maybe.clone();
+            }
         }
         self.push_var(ident, car)?;
         Ok(Expr::Null)

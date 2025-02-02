@@ -57,12 +57,12 @@ impl ScanError {
 impl std::fmt::Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let line_num_str = self.line_num.to_string();
-        write!(
+        writeln!(
             f,
-            "\x1b[31mError\x1b[0m: {}:{}:{}\n",
+            "\x1b[31mError\x1b[0m: {}:{}:{}",
             self.file_name, self.line_num, self.col
         )?;
-        write!(f, " {} | {}\n", line_num_str, self.line)?;
+        writeln!(f, " {} | {}", line_num_str, self.line)?;
         write!(
             f,
             "{}^ {:?}",
@@ -83,7 +83,7 @@ macro_rules! scan_err {
         let (line, line_num, col_num) = $scanner.get_current_line();
         ScanError {
             reason: $reason,
-            line: line,
+            line,
             col: col_num,
             line_num,
             file_name: $scanner.file_name.clone(),
