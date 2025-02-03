@@ -1,7 +1,5 @@
 use std::{
-    fs::File,
-    io::{Read, Write},
-    path::PathBuf,
+    fs::File, io::{Read, Write}, path::PathBuf
 };
 
 use skimi::{
@@ -45,11 +43,11 @@ fn repl() {
     }
 }
 
-fn evaluate_file(file: &mut File) {
+fn evaluate_file(file: &mut File, fname: String) {
     let mut code = String::new();
     file.read_to_string(&mut code).unwrap();
     let chars = code.chars().collect::<Vec<char>>();
-    let mut parser = Parser::new(&chars, "TODO".to_owned());
+    let mut parser = Parser::new(&chars, fname);
     let mut evaluator = Evaluator::new();
     loop {
         match parser.parse_next() {
@@ -66,20 +64,21 @@ fn evaluate_file(file: &mut File) {
 }
 
 fn main() {
-    let mut files_to_evaluate: Vec<File> = Vec::new();
+    let mut files_to_evaluate: Vec<(File, String)> = Vec::new();
 
     for arg in std::env::args().skip(1) {
         let pb = PathBuf::from(arg);
         if pb.is_file() {
-            files_to_evaluate.push(File::open(pb).unwrap());
+            let fname = pb.clone().as_os_str().to_string_lossy().to_string();
+            files_to_evaluate.push((File::open(pb).unwrap(), fname));
         }
     }
 
     if files_to_evaluate.is_empty() {
         repl();
     } else {
-        for mut file in files_to_evaluate.into_iter() {
-            evaluate_file(&mut file);
+        for (mut file, fname) in files_to_evaluate.into_iter() {
+            evaluate_file(&mut file, fname);
         }
     }
 }
